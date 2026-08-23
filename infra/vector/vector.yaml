@@ -1,0 +1,153 @@
+# Vector edge collector for Layer 2 Ingest.
+#
+# Provenance rule: source_alias is set ONLY here, per source. File sources get
+# it from the static file path mapping below; HTTP listeners bind it to the
+# bearer token that authenticated the request. Record content can never set
+# or override envelope metadata.
+
+data_dir: /var/lib/vector
+
+api:
+  enabled: true
+  address: 127.0.0.1:8686
+
+sources:
+  # --- estate log_sources (paths mirror inventory/default.yaml) ---
+  file_lab_shop:
+    type: file
+    include: ["/var/log/lab/lab-shop/access.log"]
+  file_lab_idp:
+    type: file
+    include: ["/var/log/lab/lab-idp/auth.log"]
+  file_lab_wallet:
+    type: file
+    include: ["/var/log/lab/lab-wallet/app.log"]
+  file_soc_api:
+    type: file
+    include: ["/var/log/lab/soc-api/access.log"]
+
+  # --- authenticated HTTP listeners: one per sender, one token each ---
+  http_webhooks:
+    type: http_server
+    address: 0.0.0.0:9000
+    decoding:
+      codec: bytes
+    auth:
+      strategy: bearer
+      token: "${VECTOR_WEBHOOK_TOKEN}"
+  http_redteam:
+    type: http_server
+    address: 0.0.0.0:9001
+    decoding:
+      codec: bytes
+    auth:
+      strategy: bearer
+      token: "${VECTOR_REDTEAM_TOKEN}"
+
+transforms:
+  # Each file transform hardcodes its source_alias: provenance comes from the
+  # static source-to-transform wiring, never from record content or metadata.
+  wrap_lab_shop:
+    type: remap
+    inputs: [file_lab_shop]
+    source: |
+      raw = strip_ansi_escape_codes(string!(.message))
+      . = {
+        "lab_id": "default",
+        "source_alias": "lab-shop",
+        "source_type": "file",
+        "collector": "vector",
+        "raw": raw,
+        "observed_at": format_timestamp!(now(), format: "%+")
+      }
+  wrap_lab_idp:
+    type: remap
+    inputs: [file_lab_idp]
+    source: |
+      raw = strip_ansi_escape_codes(string!(.message))
+      . = {
+        "lab_id": "default",
+        "source_alias": "lab-idp",
+        "source_type": "file",
+        "collector": "vector",
+        "raw": raw,
+        "observed_at": format_timestamp!(now(), format: "%+")
+      }
+  wrap_lab_wallet:
+    type: remap
+    inputs: [file_lab_wallet]
+    source: |
+      raw = strip_ansi_escape_codes(string!(.message))
+      . = {
+        "lab_id": "default",
+        "source_alias": "lab-wallet",
+        "source_type": "file",
+        "collector": "vector",
+        "raw": raw,
+        "observed_at": format_timestamp!(now(), format: "%+")
+      }
+  wrap_soc_api:
+    type: remap
+    inputs: [file_soc_api]
+    source: |
+      raw = strip_ansi_escape_codes(string!(.message))
+      . = {
+        "lab_id": "default",
+        "source_alias": "soc-api",
+        "source_type": "file",
+        "collector": "vector",
+        "raw": raw,
+        "observed_at": format_timestamp!(now(), format: "%+")
+      }
+
+  wrap_webhooks:
+    type: remap
+    inputs: [http_webhooks]
+    source: |
+      raw = strip_ansi_escape_codes(string!(.message))
+      . = {
+        "lab_id": "default",
+        "source_alias": "webhook-generic",
+        "source_type": "webhook",
+        "collector": "vector",
+        "raw": raw,
+        "observed_at": format_timestamp!(now(), format: "%+")
+      }
+  wrap_redteam:
+    type: remap
+    inputs: [http_redteam]
+    source: |
+      raw = strip_ansi_escape_codes(string!(.message))
+      . = {
+        "lab_id": "default",
+        "source_alias": "soc-agent-red-team",
+        "source_type": "webhook",
+        "collector": "vector",
+        "raw": raw,
+        "observed_at": format_timestamp!(now(), format: "%+")
+      }
+
+sinks:
+  kafka_raw:
+    type: kafka
+    inputs:
+      - wrap_lab_shop
+      - wrap_lab_idp
+      - wrap_lab_wallet
+      - wrap_soc_api
+      - wrap_webhooks
+      - wrap_redteam
+    bootstrap_servers: kafka:9092
+    topic: soc.raw.v1
+    key_field: source_alias
+    encoding:
+      codec: json
+    sasl:
+      enabled: true
+      mechanism: PLAIN
+      username: vector
+      password: "${KAFKA_VECTOR_PASSWORD}"
+    buffer:
+      type: disk
+      max_size: 268435456
+      when_full: block

@@ -237,6 +237,117 @@ assets:
         auth_scheme: none
     in_scope_red_team: true
 
+  - asset_id: "22222222-2222-4222-8222-222222222205"
+    lab_id: default
+    kind: soc_service
+    name: soc-kafka
+    owner: soc
+    lifecycle: declared
+    execution_realm: lab
+    respond_allowed: false
+    self_defense_class: never_isolate
+    owner_ref: soc-ops
+    approval_policy_id: soc-hitl
+    exposure: lab_network
+    aliases: ["soc-kafka", "kafka"]
+    attack_surface:
+      - id: kafka-broker
+        locator: "kafka:9092"
+        scheme: kafka
+        auth_scheme: sasl_plain
+    restore_handles:
+      - kind: volume
+        locator: "kafka-data"
+    credential_refs:
+      - name: kafka_admin_password
+        ref: "env:KAFKA_ADMIN_PASSWORD"
+    forbidden_actions: ["isolate"]
+    in_scope_red_team: true
+
+  - asset_id: "22222222-2222-4222-8222-222222222206"
+    lab_id: default
+    kind: soc_service
+    name: soc-karapace
+    owner: soc
+    lifecycle: declared
+    execution_realm: lab
+    respond_allowed: true
+    self_defense_class: contain_with_degraded_mode
+    owner_ref: soc-ops
+    approval_policy_id: soc-hitl
+    exposure: lab_network
+    aliases: ["soc-karapace", "karapace"]
+    attack_surface:
+      - id: karapace-http
+        locator: "http://karapace:8081"
+        scheme: http
+        auth_scheme: none
+    containment_handles:
+      - kind: compose_service
+        locator: "karapace"
+    credential_refs:
+      - name: kafka_karapace_password
+        ref: "env:KAFKA_KARAPACE_PASSWORD"
+    in_scope_red_team: true
+
+  - asset_id: "22222222-2222-4222-8222-222222222207"
+    lab_id: default
+    kind: soc_service
+    name: soc-vector
+    owner: soc
+    lifecycle: declared
+    execution_realm: lab
+    respond_allowed: true
+    self_defense_class: contain_with_degraded_mode
+    owner_ref: soc-ops
+    approval_policy_id: soc-hitl
+    exposure: lab_network
+    # webhook-generic: events arriving on the generic webhook listener are
+    # attributed to the collector until a per-sender listener exists.
+    aliases: ["soc-vector", "vector", "webhook-generic"]
+    attack_surface:
+      - id: vector-webhooks
+        locator: "http://vector:9000"
+        scheme: http
+        auth_scheme: bearer
+      - id: vector-redteam
+        locator: "http://vector:9001"
+        scheme: http
+        auth_scheme: bearer
+    containment_handles:
+      - kind: compose_service
+        locator: "vector"
+    credential_refs:
+      - name: kafka_vector_password
+        ref: "env:KAFKA_VECTOR_PASSWORD"
+      - name: vector_webhook_token
+        ref: "env:VECTOR_WEBHOOK_TOKEN"
+      - name: vector_redteam_token
+        ref: "env:VECTOR_REDTEAM_TOKEN"
+    in_scope_red_team: true
+
+  - asset_id: "22222222-2222-4222-8222-222222222208"
+    lab_id: default
+    kind: soc_agent
+    name: soc-agent-ingest
+    owner: soc
+    lifecycle: declared
+    execution_realm: lab
+    respond_allowed: true
+    self_defense_class: contain_with_degraded_mode
+    owner_ref: soc-ops
+    approval_policy_id: soc-hitl
+    exposure: lab_network
+    aliases: ["soc-agent-ingest"]
+    containment_handles:
+      - kind: compose_service
+        locator: "soc-agent-ingest"
+    credential_refs:
+      - name: kafka_ingest_password
+        ref: "env:KAFKA_INGEST_PASSWORD"
+    in_scope_red_team: false
+    red_team_skip: true
+
 edges:
   - from: "11111111-1111-4111-8111-111111111102"
     to: "11111111-1111-4111-8111-111111111101"
@@ -266,5 +377,20 @@ edges:
     to: "22222222-2222-4222-8222-222222222201"
     kind: emits_logs_as
   - from: "22222222-2222-4222-8222-222222222204"
+    to: "22222222-2222-4222-8222-222222222201"
+    kind: emits_logs_as
+  - from: "22222222-2222-4222-8222-222222222206"
+    to: "22222222-2222-4222-8222-222222222205"
+    kind: depends_on
+  - from: "22222222-2222-4222-8222-222222222207"
+    to: "22222222-2222-4222-8222-222222222205"
+    kind: depends_on
+  - from: "22222222-2222-4222-8222-222222222208"
+    to: "22222222-2222-4222-8222-222222222205"
+    kind: depends_on
+  - from: "22222222-2222-4222-8222-222222222208"
+    to: "22222222-2222-4222-8222-222222222206"
+    kind: depends_on
+  - from: "22222222-2222-4222-8222-222222222208"
     to: "22222222-2222-4222-8222-222222222201"
     kind: emits_logs_as

@@ -1,0 +1,45 @@
+{
+  "additionalProperties": false,
+  "description": "Provenance-locked raw envelope built by Vector.\n\nsource_alias comes from static Vector source configuration (file path or\nauthenticated HTTP listener), never from record content.",
+  "properties": {
+    "collector": {
+      "title": "Collector",
+      "type": "string"
+    },
+    "lab_id": {
+      "title": "Lab Id",
+      "type": "string"
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    },
+    "raw": {
+      "title": "Raw",
+      "type": "string"
+    },
+    "source_alias": {
+      "title": "Source Alias",
+      "type": "string"
+    },
+    "source_type": {
+      "enum": [
+        "file",
+        "webhook"
+      ],
+      "title": "Source Type",
+      "type": "string"
+    }
+  },
+  "required": [
+    "lab_id",
+    "source_alias",
+    "source_type",
+    "collector",
+    "raw",
+    "observed_at"
+  ],
+  "title": "RawRecord",
+  "type": "object"
+}

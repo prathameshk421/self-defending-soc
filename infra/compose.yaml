@@ -1,0 +1,162 @@
+---
+# Layer 2 Ingest infrastructure: Kafka (KRaft) + Karapace + Vector.
+# Lab-only: nothing is published to the host. Credentials come from .env
+# (see .env.example). All images pinned by digest.
+name: soc-ingest
+
+networks:
+  lab-net:
+    name: lab-net
+
+volumes:
+  kafka-data:
+  vector-data:
+  lab-logs:
+
+services:
+  kafka:
+    image: apache/kafka:4.0.0@sha256:3f7b939115cd4872e9cee9369d80bd69712fde55f9902f46d793f64848dedc75
+    networks: [lab-net]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    mem_limit: 1g
+    pids_limit: 256
+    restart: unless-stopped
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: SASL://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: SASL://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: SASL:SASL_PLAINTEXT,CONTROLLER:SASL_PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: SASL
+      KAFKA_SASL_ENABLED_MECHANISMS: PLAIN
+      KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: PLAIN
+      KAFKA_SASL_MECHANISM_CONTROLLER_PROTOCOL: PLAIN
+      # Per-principal credentials. PLAIN (not SCRAM) because KRaft needs SCRAM
+      # creds at storage-format time, unsupported by this image's entrypoint;
+      # authorization properties are identical. SCRAM+TLS is a recorded follow-up.
+      KAFKA_LISTENER_NAME_SASL_PLAIN_SASL_JAAS_CONFIG: >-
+        org.apache.kafka.common.security.plain.PlainLoginModule required
+        username="admin" password="${KAFKA_ADMIN_PASSWORD}"
+        user_admin="${KAFKA_ADMIN_PASSWORD}"
+        user_vector="${KAFKA_VECTOR_PASSWORD}"
+        user_ingest="${KAFKA_INGEST_PASSWORD}"
+        user_karapace="${KAFKA_KARAPACE_PASSWORD}";
+      KAFKA_LISTENER_NAME_CONTROLLER_PLAIN_SASL_JAAS_CONFIG: >-
+        org.apache.kafka.common.security.plain.PlainLoginModule required
+        username="admin" password="${KAFKA_ADMIN_PASSWORD}"
+        user_admin="${KAFKA_ADMIN_PASSWORD}";
+      KAFKA_SASL_JAAS_CONFIG: >-
+        org.apache.kafka.common.security.plain.PlainLoginModule required
+        username="admin" password="${KAFKA_ADMIN_PASSWORD}";
+      KAFKA_AUTHORIZER_CLASS_NAME: org.apache.kafka.metadata.authorizer.StandardAuthorizer
+      KAFKA_SUPER_USERS: User:admin
+      KAFKA_ALLOW_EVERYONE_IF_NO_ACL_FOUND: "false"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_MESSAGE_MAX_BYTES: 1048576
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          printf 'security.protocol=SASL_PLAINTEXT\nsasl.mechanism=PLAIN\nsasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username="admin" password="%s";\n' "$$KAFKA_ADMIN_PASSWORD_HC" > /tmp/hc.properties &&
+          /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 --command-config /tmp/hc.properties > /dev/null
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+
+  # One-shot: create topics with retention and apply per-principal ACLs.
+  kafka-init:
+    image: apache/kafka:4.0.0@sha256:3f7b939115cd4872e9cee9369d80bd69712fde55f9902f46d793f64848dedc75
+    networks: [lab-net]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    mem_limit: 512m
+    pids_limit: 128
+    restart: "no"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_ADMIN_PASSWORD: ${KAFKA_ADMIN_PASSWORD}
+    volumes:
+      - ./kafka-init.sh:/kafka-init.sh:ro
+    entrypoint: ["/bin/bash", "/kafka-init.sh"]
+
+  karapace:
+    image: ghcr.io/aiven-open/karapace:6.2.2@sha256:3c202789067f1bc3aa68d9dbb22d6298d254380a9e69c2705120c7434277238c
+    networks: [lab-net]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    mem_limit: 512m
+    pids_limit: 256
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    entrypoint: ["python3", "-m", "karapace"]
+    environment:
+      KARAPACE_KARAPACE_REGISTRY: "true"
+      KARAPACE_ADVERTISED_HOSTNAME: karapace
+      KARAPACE_ADVERTISED_PROTOCOL: http
+      KARAPACE_BOOTSTRAP_URI: kafka:9092
+      KARAPACE_SECURITY_PROTOCOL: SASL_PLAINTEXT
+      KARAPACE_SASL_MECHANISM: PLAIN
+      KARAPACE_SASL_PLAIN_USERNAME: karapace
+      KARAPACE_SASL_PLAIN_PASSWORD: ${KAFKA_KARAPACE_PASSWORD}
+      KARAPACE_HOST: 0.0.0.0
+      KARAPACE_PORT: 8081
+      KARAPACE_CLIENT_ID: karapace-registry
+      KARAPACE_GROUP_ID: karapace-registry
+      KARAPACE_TOPIC_NAME: _schemas
+      KARAPACE_COMPATIBILITY: FORWARD
+      KARAPACE_LOG_LEVEL: INFO
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8081/subjects', timeout=5)\""]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+
+  vector:
+    image: timberio/vector:0.46.1-debian@sha256:ccf9c8ffcd1ffbe59e4d62bf44926664908ea1cb6b492b91634d1afd01e3376f
+    networks: [lab-net]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    mem_limit: 512m
+    pids_limit: 256
+    read_only: true
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    tmpfs:
+      - /tmp
+    volumes:
+      - ./vector/vector.yaml:/etc/vector/vector.yaml:ro
+      - vector-data:/var/lib/vector
+      # Lab services write their logs here; Vector only reads.
+      - lab-logs:/var/log/lab:ro
+    environment:
+      KAFKA_VECTOR_PASSWORD: ${KAFKA_VECTOR_PASSWORD}
+      VECTOR_WEBHOOK_TOKEN: ${VECTOR_WEBHOOK_TOKEN}
+      VECTOR_REDTEAM_TOKEN: ${VECTOR_REDTEAM_TOKEN}
+    command: ["--config", "/etc/vector/vector.yaml"]
+    healthcheck:
+      test: ["CMD", "vector", "top", "--url", "http://localhost:8686/graphql", "--human-metrics"]
+      interval: 15s
+      timeout: 10s
+      retries: 8
+      start_period: 20s
