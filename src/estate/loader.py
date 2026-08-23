@@ -9,7 +9,7 @@ import yaml
 from pydantic import ValidationError
 
 from estate.errors import InventoryInvalid
-from estate.models import SCHEMA_VERSION, Inventory
+from estate.models import SCHEMA_VERSION, AssetKind, Inventory
 
 # Keys that must never hold secret *values* in inventory documents.
 _SECRET_KEY_FRAGMENTS = (
@@ -106,6 +106,14 @@ def _validate_red_team_surface(inventory: Inventory) -> None:
             )
 
 
+def _validate_lab_host_log_sources(inventory: Inventory) -> None:
+    for asset in inventory.assets:
+        if asset.kind == AssetKind.LAB_HOST and not asset.log_sources:
+            raise InventoryInvalid(
+                f"lab_host asset {asset.name!r} has empty log_sources"
+            )
+
+
 def _validate_edges(inventory: Inventory) -> None:
     ids = {a.asset_id for a in inventory.assets}
     for edge in inventory.edges:
@@ -150,5 +158,6 @@ def load_inventory(path: str | Path) -> Inventory:
 
     _validate_uniqueness(inventory)
     _validate_red_team_surface(inventory)
+    _validate_lab_host_log_sources(inventory)
     _validate_edges(inventory)
     return inventory

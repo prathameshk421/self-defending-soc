@@ -12,6 +12,7 @@ SCHEMA_VERSION = 1
 
 
 class AssetKind(str, Enum):
+    LAB_HOST = "lab_host"
     LAB_SERVICE = "lab_service"
     LAB_ACCOUNT = "lab_account"
     LAB_NETWORK = "lab_network"

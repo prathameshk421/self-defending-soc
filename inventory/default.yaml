@@ -145,6 +145,32 @@ assets:
         locator: "lab-wallet"
     in_scope_red_team: true
 
+  - asset_id: "11111111-1111-4111-8111-111111111107"
+    lab_id: default
+    kind: lab_host
+    name: lab-endpoint
+    owner: lab_app
+    lifecycle: declared
+    execution_realm: lab
+    respond_allowed: false
+    self_defense_class: watch_only
+    owner_ref: lab-ops
+    approval_policy_id: default-hitl
+    exposure: loopback
+    aliases: ["lab-endpoint"]
+    log_sources:
+      - id: endpoint-syslog
+        kind: file
+        locator: "/var/log/syslog"
+      - id: endpoint-udev
+        kind: file
+        locator: "/var/log/udev"
+      - id: endpoint-process
+        kind: file
+        locator: "/var/log/audit/process"
+    in_scope_red_team: false
+    red_team_skip: true
+
   - asset_id: "22222222-2222-4222-8222-222222222201"
     lab_id: default
     kind: soc_api
