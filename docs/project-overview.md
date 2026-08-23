@@ -16,13 +16,14 @@ AI is getting better at breaking systems. Defense has to be a loop, not a dashbo
 flowchart TB
   subgraph estate["Estate"]
     lab["Lab apps"]
+    host["Lab Linux host"]
     self["This SOC — API, config, agents"]
   end
 
   red["Red team"] -->|"ethically hacks, including this SOC"| estate
   red -->|"findings"| ingest
 
-  estate -->|"logs, attacks, webhooks"| ingest["Ingest"]
+  estate -->|"app logs, host system logs, webhooks"| ingest["Ingest"]
   ingest --> detect["Detect"]
   detect --> investigate["Investigate"]
   investigate --> hitl{"Human in the loop"}
@@ -67,8 +68,8 @@ Every case must include:
 
 | # | Layer | What this layer does |
 |---|---|---|
-| 1 | **Estate** | Defines what we protect: lab services plus this SOC’s own API, config, and agents. |
-| 2 | **Ingest** | Brings logs, attacks, and webhooks into the system as a stream of events. |
+| 1 | **Estate** | Defines what we protect: lab services, one lab Linux host (`lab-endpoint`), plus this SOC’s own API, config, and agents. |
+| 2 | **Ingest** | Brings app logs, host system logs, and webhooks into a redacted event stream. Walkthrough: [ingest-layer.md](ingest-layer.md). |
 | 3 | **Detect** | Finds attacks and suspicious activity in that stream. |
 | 4 | **Investigate** | Turns detections into a case: evidence, blast radius, and a written justification. |
 | 5 | **Respond** | Stops the attack in the lab after a human approves (for example isolate a lab service, block in a lab firewall, disable a lab account). This is the default action. |
