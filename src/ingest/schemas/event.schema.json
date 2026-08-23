@@ -1,0 +1,64 @@
+{
+  "additionalProperties": false,
+  "description": "Normalized, asset-mapped, redacted event.",
+  "properties": {
+    "asset_id": {
+      "title": "Asset Id",
+      "type": "string"
+    },
+    "event_id": {
+      "title": "Event Id",
+      "type": "string"
+    },
+    "lab_id": {
+      "title": "Lab Id",
+      "type": "string"
+    },
+    "occurred_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Occurred At"
+    },
+    "payload": {
+      "title": "Payload",
+      "type": "string"
+    },
+    "received_at": {
+      "format": "date-time",
+      "title": "Received At",
+      "type": "string"
+    },
+    "schema_version": {
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "source_alias": {
+      "title": "Source Alias",
+      "type": "string"
+    },
+    "source_type": {
+      "title": "Source Type",
+      "type": "string"
+    }
+  },
+  "required": [
+    "event_id",
+    "lab_id",
+    "asset_id",
+    "source_alias",
+    "source_type",
+    "received_at",
+    "payload"
+  ],
+  "title": "Event",
+  "type": "object"
+}

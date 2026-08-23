@@ -19,6 +19,7 @@ class AssetKind(str, Enum):
     SOC_API = "soc_api"
     SOC_CONFIG = "soc_config"
     SOC_AGENT = "soc_agent"
+    SOC_SERVICE = "soc_service"
 
 
 class Owner(str, Enum):

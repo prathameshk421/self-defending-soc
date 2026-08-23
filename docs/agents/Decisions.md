@@ -37,3 +37,35 @@ Credential *values* rejected at load. Red team and git must not get passwords fr
 ### No auto-register of shadow containers as respondable assets
 
 Unknown runtime objects stay non-targets. Respond must use allowlisted handles from inventory.
+
+## 2026-08-23 — Layer 2 Ingest
+
+Plan was council-reviewed (cybersecurity, scalability, coding critics + judge); rulings in `docs/superpowers/plans/2026-08-23-ingest-layer-2.md`.
+
+### confluent-kafka behind Protocol ports as an optional extra (not kafka-python / aiokafka)
+
+kafka-python is under-maintained and aiokafka drags in asyncio the codebase does not use. But confluent-kafka is a C extension, so it lives behind `[kafka]` and one adapter module; the pipeline depends only on `ingest.ports` Protocols and CI never imports it.
+
+### JSON Schemas generated from Pydantic (not hand-written)
+
+Two sources of truth drift. `ingest schema export` regenerates; a contract test asserts byte-equality with the checked-in files.
+
+### FORWARD compatibility in Karapace (not BACKWARD)
+
+We control both producer and consumer; producer-led evolution with FORWARD prevents removing fields consumers rely on. `vN` in topic names is the breaking-change escape hatch.
+
+### Deterministic UUIDv5 event ids (not uuid4 at normalize time)
+
+At-least-once redelivery and future replay must yield the same id so downstream can dedup. Derived from lab_id + source_alias + observed_at + content hash, pre-redaction.
+
+### SASL/PLAIN with per-principal ACLs, no TLS yet (not SCRAM or open PLAINTEXT)
+
+Open Kafka is a forge/blind primitive for the in-scope red team, so auth + ACLs ship now. SCRAM needs credentials at KRaft storage-format time, which the apache/kafka image entrypoint cannot do; PLAIN gives identical authorization here. SCRAM+TLS is a recorded follow-up.
+
+### Unknown alias is data, not an exception
+
+Normalizer returns a tagged union (`Normalized | Unmapped | Invalid`); the pipeline maps variants to topics. Unmapped/DLQ records carry the redacted original envelope + reason header so they are reprocessable, never a raw-secret swamp.
+
+### httpx (not requests) for the Karapace client
+
+`httpx.MockTransport` lets tests fake the registry without adding a mocking library, matching the repo's hand-rolled-fakes convention.
