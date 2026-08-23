@@ -69,3 +69,27 @@ Normalizer returns a tagged union (`Normalized | Unmapped | Invalid`); the pipel
 ### httpx (not requests) for the Karapace client
 
 `httpx.MockTransport` lets tests fake the registry without adding a mocking library, matching the repo's hand-rolled-fakes convention.
+
+## 2026-08-24 — Linux system logs (lab-endpoint)
+
+### Three file binds + 9p of `infra/endpoint/logs` only (not `lab-logs`, not a Vector directory bind)
+
+A guest symlink in a directory bind can follow into shop/API log files inside Vector. File binds pin inodes. The QEMU 9p share is still the directory (guest must write files) but Vector never opens that directory.
+
+### Host logs stay `source_type=file`; payload is untrusted self-report
+
+The journal allowlist is a volume/noise filter for the honest forwarder, not authenticity. Detect must not treat `identifier` as proof of origin.
+
+### `lab-endpoint` is watch-only / `respond_allowed=false` / `red_team_skip=true`
+
+QEMU lives on the operator workstation. No `qemu_vm` containment handle.
+
+### Event schema stays v1; payload `source` is the channel tag (`journal` vs `usb-helper`)
+
+So later OS-wide `file_create` (slice C) is not confused with USB helper confession.
+
+### CI goldens are the merge contract; live QEMU is operator verification
+
+### No auditd/Sysmon. `process.log` is helper-authored copy/exec confession
+
+### This plan supersedes the USB-only endpoint plan

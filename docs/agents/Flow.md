@@ -38,6 +38,7 @@ CLI (python -m estate)
 
 ```
 Vector (file tails + authed HTTP listeners; source_alias set per source)
+  including lab-endpoint syslog.log, udev.log, process.log
   → Kafka soc.raw.v1  (key = source_alias)
 
 CLI (python -m ingest run)

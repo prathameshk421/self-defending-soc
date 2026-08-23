@@ -17,3 +17,5 @@ Append-only. One dated bullet when behavior, schema, inventory, or public APIs c
 
 - Estate: new `lab_host` asset kind. Inventory gains `lab-endpoint` (uuid `11111111-1111-4111-8111-111111111107`) with three endpoint log sources.
 - Estate loader: `lab_host` assets with empty `log_sources` are rejected with `InventoryInvalid`.
+- Vector tails `lab-endpoint` `syslog.log`, `udev.log`, and `process.log` with hardcoded alias `lab-endpoint`. Compose inode-pins those three files into Vector (not a directory bind).
+- Guest journal remap lives in `infra/endpoint/guest/journal_map.py` (tests load it via SourceFileLoader; ingest/estate do not import it).
