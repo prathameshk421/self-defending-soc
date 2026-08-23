@@ -13,6 +13,7 @@ CLI (python -m estate)
        → Pydantic Inventory validation
        → uniqueness checks (lab_id+name, aliases)
        → red-team surface rules
+       → lab_host log_sources rule
   → estate.query.Estate(inventory)
        → get / list / neighbors / resolve_alias / assert_respond_target
 ```
