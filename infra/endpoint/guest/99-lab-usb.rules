@@ -1,0 +1,2 @@
+ACTION=="add", SUBSYSTEM=="block", DEVTYPE=="disk", ID_USB_DRIVER=="usb-storage", RUN+="/usr/local/sbin/lab-usb-ingest"
+ACTION=="remove", SUBSYSTEM=="block", DEVTYPE=="disk", ENV{ID_BUS}=="usb", RUN+="/usr/local/sbin/lab-usb-ingest"

@@ -1,0 +1,28 @@
+#cloud-config
+hostname: lab-endpoint
+manage_etc_hosts: true
+users:
+  - name: debian
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: true
+ssh_pwauth: false
+
+mounts:
+  - [ labendpoint, /var/log/lab-endpoint, 9p, "trans=virtio,version=9p2000.L,cache=none", "0", "0" ]
+
+package_update: false
+packages: []
+
+runcmd:
+  - install -d -m 0755 /usr/local/lib/lab-endpoint /var/log/lab-endpoint /var/lib/lab-endpoint /mnt/lab-stick
+  - install -m 0644 /var/lib/cloud/instance/seed/nocloud/journal_map.py /usr/local/lib/lab-endpoint/journal_map.py
+  - install -m 0755 /var/lib/cloud/instance/seed/nocloud/lab-journal-forward /usr/local/sbin/lab-journal-forward
+  - install -m 0755 /var/lib/cloud/instance/seed/nocloud/lab-usb-ingest /usr/local/sbin/lab-usb-ingest
+  - install -m 0644 /var/lib/cloud/instance/seed/nocloud/99-lab-usb.rules /etc/udev/rules.d/99-lab-usb.rules
+  - install -m 0644 /var/lib/cloud/instance/seed/nocloud/lab-journal-forward.service /etc/systemd/system/lab-journal-forward.service
+  - udevadm control --reload
+  - systemctl daemon-reload
+  - systemctl enable --now lab-journal-forward.service
+  - mount -t 9p -o trans=virtio,version=9p2000.L,cache=none labendpoint /var/log/lab-endpoint || true
+  - touch /var/log/lab-endpoint/syslog.log /var/log/lab-endpoint/udev.log /var/log/lab-endpoint/process.log

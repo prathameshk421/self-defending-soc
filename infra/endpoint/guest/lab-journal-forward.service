@@ -1,0 +1,15 @@
+[Unit]
+Description=lab-endpoint journal forwarder
+After=systemd-journald.service
+Requires=systemd-journald.service
+
+[Service]
+Type=exec
+ExecStart=/usr/bin/python3 /usr/local/sbin/lab-journal-forward
+Restart=on-failure
+RestartSec=2
+StartLimitBurst=10
+StartLimitIntervalSec=60
+
+[Install]
+WantedBy=multi-user.target

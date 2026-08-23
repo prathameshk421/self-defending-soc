@@ -19,3 +19,4 @@ Append-only. One dated bullet when behavior, schema, inventory, or public APIs c
 - Estate loader: `lab_host` assets with empty `log_sources` are rejected with `InventoryInvalid`.
 - Vector tails `lab-endpoint` `syslog.log`, `udev.log`, and `process.log` with hardcoded alias `lab-endpoint`. Compose inode-pins those three files into Vector (not a directory bind).
 - Guest journal remap lives in `infra/endpoint/guest/journal_map.py` (tests load it via SourceFileLoader; ingest/estate do not import it).
+- Optional operator QEMU guest under `infra/endpoint/` (no compose QEMU service): 9p of the log dir only, `-nic none`, unix monitor, USB helper + journal forwarder.

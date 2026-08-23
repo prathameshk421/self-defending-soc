@@ -1,0 +1,71 @@
+#!/bin/sh
+# udev RUN+= helper. Copied stick bytes still run as root (autorun demo).
+set -eu
+
+if [ -n "${1:-}" ]; then
+  exit 2
+fi
+
+DEVNAME="${DEVNAME:-}"
+ACTION="${ACTION:-}"
+DEVTYPE="${DEVTYPE:-}"
+LOGDIR="/var/log/lab-endpoint"
+UDEV_LOG="$LOGDIR/udev.log"
+PROCESS_LOG="$LOGDIR/process.log"
+MNT="/mnt/lab-stick"
+TS="$(date -u +%Y-%m-%dT%H:%M:%S.000000+00:00)"
+
+case "$DEVNAME" in
+  /dev/[a-zA-Z0-9]*) ;;
+  *) exit 1 ;;
+esac
+
+append_json() {
+  # $1 file $2 json-line without newline
+  path=$1
+  line=$2
+  [ -f "$path" ] || exit 1
+  [ ! -L "$path" ] || exit 1
+  printf '%s\n' "$line" >>"$path"
+  python3 -c "import os; f=open('$path','ab'); os.fsync(f.fileno()); f.close()"
+}
+
+rotate_if_needed() {
+  path=$1
+  sz=$(wc -c <"$path" | tr -d ' ')
+  if [ "$sz" -ge 8388608 ]; then
+    mv "$path" "$path.1"
+    : >"$path"
+  fi
+}
+
+mkdir -p "$LOGDIR" "$MNT"
+rotate_if_needed "$UDEV_LOG" 2>/dev/null || : >"$UDEV_LOG"
+
+if [ "$ACTION" = "remove" ]; then
+  append_json "$UDEV_LOG" "{\"timestamp\":\"$TS\",\"source\":\"usb-helper\",\"action\":\"remove\",\"devtype\":\"${DEVTYPE:-disk}\",\"devname\":\"$DEVNAME\"}"
+  exit 0
+fi
+
+if [ "$ACTION" != "add" ]; then
+  exit 0
+fi
+
+append_json "$UDEV_LOG" "{\"timestamp\":\"$TS\",\"source\":\"usb-helper\",\"action\":\"add\",\"devtype\":\"${DEVTYPE:-disk}\",\"devname\":\"$DEVNAME\"}"
+
+if ! timeout 10 mount -t vfat -o ro,nosuid,nodev,noexec "$DEVNAME" "$MNT"; then
+  exit 1
+fi
+
+if ! cp "$MNT/lab-marker.sh" /tmp/lab-usb-marker; then
+  umount "$MNT" || true
+  exit 1
+fi
+umount "$MNT"
+chmod 0755 /tmp/lab-usb-marker
+
+rotate_if_needed "$PROCESS_LOG" 2>/dev/null || : >"$PROCESS_LOG"
+append_json "$PROCESS_LOG" "{\"timestamp\":\"$TS\",\"source\":\"usb-helper\",\"action\":\"file_create\",\"path\":\"/tmp/lab-usb-marker\"}"
+append_json "$PROCESS_LOG" "{\"timestamp\":\"$TS\",\"source\":\"usb-helper\",\"action\":\"process_create\",\"image\":\"/tmp/lab-usb-marker\",\"command_line\":\"/tmp/lab-usb-marker\"}"
+
+exec /tmp/lab-usb-marker

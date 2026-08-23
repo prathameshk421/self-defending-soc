@@ -1,0 +1,162 @@
+#!/usr/bin/python3
+"""Forward allowlisted journald records onto syslog.log. Thin wrapper around journal_map."""
+
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+sys.path.insert(0, "/usr/local/lib/lab-endpoint")
+from journal_map import format_syslog_line, keep_journal_record  # noqa: E402
+
+LOG_PATH = Path("/var/log/lab-endpoint/syslog.log")
+CURSOR_PATH = Path("/var/lib/lab-endpoint/journal.cursor")
+FIELDS = (
+    "PRIORITY,SYSLOG_IDENTIFIER,_SYSTEMD_UNIT,MESSAGE,"
+    "__REALTIME_TIMESTAMP,__CURSOR,_PID"
+)
+PARSE_CAP = 262144
+RATE = 20
+ROTATE_BYTES = 8 * 1024 * 1024
+DIR_CAP = 32 * 1024 * 1024
+BATCH_N = 32
+BATCH_S = 1.0
+
+
+def _now_ts() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="microseconds")
+
+
+def _open_log():
+    if LOG_PATH.is_symlink() or not LOG_PATH.exists():
+        LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        LOG_PATH.touch()
+    fd = os.open(str(LOG_PATH), os.O_WRONLY | os.O_APPEND | os.O_NOFOLLOW)
+    return os.fdopen(fd, "ab", buffering=0)
+
+
+def _rotate(fh):
+    fh.close()
+    bak = LOG_PATH.with_name(LOG_PATH.name + ".1")
+    if bak.exists():
+        bak.unlink()
+    LOG_PATH.rename(bak)
+    LOG_PATH.touch()
+    return _open_log()
+
+
+def _dir_size() -> int:
+    total = 0
+    for p in LOG_PATH.parent.glob("*"):
+        if p.is_file():
+            total += p.stat().st_size
+    return total
+
+
+def _journalctl_cmd() -> list[str]:
+    cmd = [
+        "journalctl",
+        "-f",
+        "-o",
+        "json",
+        "--no-pager",
+        f"--output-fields={FIELDS}",
+    ]
+    if CURSOR_PATH.exists():
+        cursor = CURSOR_PATH.read_text(encoding="utf-8").strip()
+        if cursor:
+            cmd.extend(["--after-cursor", cursor])
+            return cmd
+    cmd.extend(["-n", "0"])
+    return cmd
+
+
+def main() -> int:
+    CURSOR_PATH.parent.mkdir(parents=True, exist_ok=True)
+    LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    fh = _open_log()
+    proc = subprocess.Popen(
+        _journalctl_cmd(), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
+    )
+    assert proc.stdout is not None
+    pending = 0
+    last_sync = time.monotonic()
+    window_start = time.monotonic()
+    window_n = 0
+    dropped = 0
+    last_notice = 0.0
+    last_cursor = ""
+
+    def flush():
+        nonlocal pending, last_sync
+        fh.flush()
+        os.fsync(fh.fileno())
+        if last_cursor:
+            CURSOR_PATH.write_text(last_cursor, encoding="utf-8")
+            cfd = os.open(str(CURSOR_PATH), os.O_RDONLY)
+            try:
+                os.fsync(cfd)
+            finally:
+                os.close(cfd)
+        pending = 0
+        last_sync = time.monotonic()
+
+    try:
+        for raw in proc.stdout:
+            if len(raw.encode("utf-8", errors="replace")) > PARSE_CAP:
+                continue
+            try:
+                obj = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            mapped = keep_journal_record(obj)
+            if mapped is None:
+                continue
+            now = time.monotonic()
+            if now - window_start >= 1.0:
+                window_start = now
+                window_n = 0
+            if window_n >= RATE:
+                dropped += 1
+                if now - last_notice >= 1.0:
+                    notice = {
+                        "timestamp": _now_ts(),
+                        "source": "journal",
+                        "identifier": "lab-journal-forward",
+                        "message": f"dropped {dropped} lines (rate limit)",
+                    }
+                    fh.write(format_syslog_line(notice).encode("utf-8"))
+                    dropped = 0
+                    last_notice = now
+                    pending += 1
+                continue
+            window_n += 1
+            if LOG_PATH.stat().st_size >= ROTATE_BYTES:
+                flush()
+                fh = _rotate(fh)
+            if _dir_size() >= DIR_CAP:
+                dropped += 1
+                continue
+            fh.write(format_syslog_line(mapped).encode("utf-8"))
+            last_cursor = str(obj.get("__CURSOR") or last_cursor)
+            pending += 1
+            if pending >= BATCH_N or (time.monotonic() - last_sync) >= BATCH_S:
+                flush()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        try:
+            flush()
+        except Exception:
+            pass
+        proc.kill()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

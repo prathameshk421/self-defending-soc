@@ -1,0 +1,7 @@
+# Runtime artifacts — never commit
+*.img
+*.qcow2
+*.sock
+overlay.qcow2
+cloud-init.iso
+seed.img

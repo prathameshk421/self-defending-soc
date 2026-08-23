@@ -26,8 +26,21 @@ def _load_mapper():
     return module
 
 
-def test_mapper_file_exists():
-    assert MAPPER_PATH.is_file()
+def test_journal_forwarder_imports_mapper():
+    text = (REPO_ROOT / "infra/endpoint/guest/lab-journal-forward").read_text(
+        encoding="utf-8"
+    )
+    assert "keep_journal_record" in text
+    assert "format_syslog_line" in text
+    assert "from journal_map import" in text
+
+
+def test_run_vm_exports_logs_dir_only():
+    text = (REPO_ROOT / "infra/endpoint/run-vm.sh").read_text(encoding="utf-8")
+    assert "infra/endpoint/logs" in text
+    assert "docker.sock" not in text
+    assert "20260821-2577" in text
+    assert "latest" not in text.split("IMAGE_URL", 1)[-1].split("\n", 1)[0]
 
 
 @pytest.fixture(scope="module")
