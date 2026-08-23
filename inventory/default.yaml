@@ -1,0 +1,270 @@
+schema_version: 1
+lab_id: default
+assets:
+  - asset_id: "11111111-1111-4111-8111-111111111101"
+    lab_id: default
+    kind: lab_network
+    name: lab-net
+    owner: lab_app
+    lifecycle: declared
+    execution_realm: lab
+    respond_allowed: true
+    self_defense_class: watch_only
+    owner_ref: lab-ops
+    approval_policy_id: default-hitl
+    exposure: lab_network
+    aliases: ["lab-net"]
+    containment_handles:
+      - kind: lab_fw_object
+        locator: "lab-net"
+    in_scope_red_team: false
+    red_team_skip: true
+
+  - asset_id: "11111111-1111-4111-8111-111111111102"
+    lab_id: default
+    kind: lab_service
+    name: lab-shop
+    owner: lab_app
+    lifecycle: declared
+    execution_realm: lab
+    respond_allowed: true
+    self_defense_class: contain_with_degraded_mode
+    owner_ref: lab-ops
+    approval_policy_id: default-hitl
+    exposure: published
+    aliases: ["lab-shop", "shop.lab.local", "hostname:shop.lab.local"]
+    log_sources:
+      - id: shop-http
+        kind: file
+        locator: "/var/log/lab-shop/access.log"
+    attack_surface:
+      - id: shop-http
+        locator: "http://shop.lab.local:8080"
+        scheme: http
+        auth_scheme: none
+    containment_handles:
+      - kind: compose_service
+        locator: "lab-shop"
+    restore_handles:
+      - kind: volume
+        locator: "lab-shop-data"
+    credential_refs:
+      - name: shop_db_password
+        ref: "env:LAB_SHOP_DB_PASSWORD"
+    in_scope_red_team: true
+
+  - asset_id: "11111111-1111-4111-8111-111111111103"
+    lab_id: default
+    kind: lab_service
+    name: lab-idp
+    owner: lab_app
+    lifecycle: declared
+    execution_realm: lab
+    respond_allowed: true
+    self_defense_class: contain_with_degraded_mode
+    owner_ref: lab-ops
+    approval_policy_id: default-hitl
+    exposure: lab_network
+    aliases: ["lab-idp", "idp.lab.local"]
+    log_sources:
+      - id: idp-auth
+        kind: file
+        locator: "/var/log/lab-idp/auth.log"
+    attack_surface:
+      - id: idp-http
+        locator: "http://idp.lab.local:8081"
+        scheme: http
+        auth_scheme: none
+    containment_handles:
+      - kind: compose_service
+        locator: "lab-idp"
+    in_scope_red_team: true
+
+  - asset_id: "11111111-1111-4111-8111-111111111104"
+    lab_id: default
+    kind: lab_account
+    name: lab-idp-user-alice
+    owner: lab_app
+    lifecycle: declared
+    execution_realm: lab
+    respond_allowed: true
+    self_defense_class: watch_only
+    owner_ref: lab-ops
+    approval_policy_id: default-hitl
+    exposure: lab_network
+    aliases: ["alice@idp.lab.local"]
+    containment_handles:
+      - kind: lab_account
+        locator: "alice@idp.lab.local"
+    in_scope_red_team: false
+    red_team_skip: true
+
+  - asset_id: "11111111-1111-4111-8111-111111111105"
+    lab_id: default
+    kind: lab_account
+    name: lab-idp-user-bob
+    owner: lab_app
+    lifecycle: declared
+    execution_realm: lab
+    respond_allowed: true
+    self_defense_class: watch_only
+    owner_ref: lab-ops
+    approval_policy_id: default-hitl
+    exposure: lab_network
+    aliases: ["bob@idp.lab.local"]
+    containment_handles:
+      - kind: lab_account
+        locator: "bob@idp.lab.local"
+    in_scope_red_team: false
+    red_team_skip: true
+
+  - asset_id: "11111111-1111-4111-8111-111111111106"
+    lab_id: default
+    kind: lab_service
+    name: lab-wallet
+    owner: lab_app
+    lifecycle: declared
+    execution_realm: lab
+    respond_allowed: true
+    self_defense_class: contain_with_degraded_mode
+    owner_ref: lab-ops
+    approval_policy_id: default-hitl
+    exposure: lab_network
+    aliases: ["lab-wallet", "wallet.lab.local"]
+    log_sources:
+      - id: wallet-app
+        kind: file
+        locator: "/var/log/lab-wallet/app.log"
+    attack_surface:
+      - id: wallet-http
+        locator: "http://wallet.lab.local:8082"
+        scheme: http
+        auth_scheme: bearer
+    containment_handles:
+      - kind: compose_service
+        locator: "lab-wallet"
+    in_scope_red_team: true
+
+  - asset_id: "22222222-2222-4222-8222-222222222201"
+    lab_id: default
+    kind: soc_api
+    name: soc-api
+    owner: soc
+    lifecycle: declared
+    execution_realm: lab
+    respond_allowed: false
+    self_defense_class: never_isolate
+    owner_ref: soc-ops
+    approval_policy_id: soc-hitl
+    exposure: lab_network
+    aliases: ["soc-api", "api.soc.lab.local"]
+    log_sources:
+      - id: soc-api-access
+        kind: file
+        locator: "/var/log/soc-api/access.log"
+    attack_surface:
+      - id: soc-api-http
+        locator: "http://api.soc.lab.local:8000"
+        scheme: http
+        auth_scheme: bearer
+    forbidden_actions: ["isolate"]
+    in_scope_red_team: true
+
+  - asset_id: "22222222-2222-4222-8222-222222222202"
+    lab_id: default
+    kind: soc_config
+    name: soc-config
+    owner: soc
+    lifecycle: declared
+    execution_realm: lab
+    respond_allowed: false
+    self_defense_class: watch_only
+    owner_ref: soc-ops
+    approval_policy_id: soc-hitl
+    exposure: loopback
+    aliases: ["soc-config"]
+    restore_handles:
+      - kind: config_path
+        locator: "/etc/soc/config.yaml"
+        known_good_ref: "git:main:config/soc/config.yaml"
+    forbidden_actions: ["isolate"]
+    in_scope_red_team: false
+    red_team_skip: true
+
+  - asset_id: "22222222-2222-4222-8222-222222222203"
+    lab_id: default
+    kind: soc_agent
+    name: soc-agent-detect
+    owner: soc
+    lifecycle: declared
+    execution_realm: lab
+    respond_allowed: true
+    self_defense_class: contain_with_degraded_mode
+    owner_ref: soc-ops
+    approval_policy_id: soc-hitl
+    exposure: lab_network
+    aliases: ["soc-agent-detect"]
+    containment_handles:
+      - kind: compose_service
+        locator: "soc-agent-detect"
+    attack_surface:
+      - id: detect-tools
+        locator: "http://detect.soc.lab.local:9001"
+        scheme: http
+        auth_scheme: none
+    in_scope_red_team: true
+
+  - asset_id: "22222222-2222-4222-8222-222222222204"
+    lab_id: default
+    kind: soc_agent
+    name: soc-agent-red-team
+    owner: soc
+    lifecycle: declared
+    execution_realm: lab
+    respond_allowed: true
+    self_defense_class: contain_with_degraded_mode
+    owner_ref: soc-ops
+    approval_policy_id: soc-hitl
+    exposure: lab_network
+    aliases: ["soc-agent-red-team"]
+    containment_handles:
+      - kind: compose_service
+        locator: "soc-agent-red-team"
+    attack_surface:
+      - id: red-team-tools
+        locator: "http://redteam.soc.lab.local:9002"
+        scheme: http
+        auth_scheme: none
+    in_scope_red_team: true
+
+edges:
+  - from: "11111111-1111-4111-8111-111111111102"
+    to: "11111111-1111-4111-8111-111111111101"
+    kind: shares_network
+  - from: "11111111-1111-4111-8111-111111111103"
+    to: "11111111-1111-4111-8111-111111111101"
+    kind: shares_network
+  - from: "11111111-1111-4111-8111-111111111106"
+    to: "11111111-1111-4111-8111-111111111101"
+    kind: shares_network
+  - from: "11111111-1111-4111-8111-111111111102"
+    to: "11111111-1111-4111-8111-111111111103"
+    kind: depends_on
+  - from: "11111111-1111-4111-8111-111111111102"
+    to: "11111111-1111-4111-8111-111111111106"
+    kind: depends_on
+  - from: "11111111-1111-4111-8111-111111111106"
+    to: "11111111-1111-4111-8111-111111111103"
+    kind: depends_on
+  - from: "11111111-1111-4111-8111-111111111103"
+    to: "11111111-1111-4111-8111-111111111104"
+    kind: authenticates_as
+  - from: "22222222-2222-4222-8222-222222222202"
+    to: "22222222-2222-4222-8222-222222222201"
+    kind: configures
+  - from: "22222222-2222-4222-8222-222222222203"
+    to: "22222222-2222-4222-8222-222222222201"
+    kind: emits_logs_as
+  - from: "22222222-2222-4222-8222-222222222204"
+    to: "22222222-2222-4222-8222-222222222201"
+    kind: emits_logs_as
