@@ -1,0 +1,5 @@
+{"timestamp":"2026-08-23T00:00:00.000000+00:00","source":"journal","priority":6,"identifier":"sshd","unit":"ssh.service","message":"Failed password for invalid user x from 10.0.0.1 port 22 ssh2"}
+{"timestamp":"2026-08-23T00:00:00.000000+00:00","source":"journal","priority":6,"identifier":"sudo","message":"pam_unix(sudo:session): session opened for user root(uid=0) by (uid=1000)"}
+{"timestamp":"2026-08-23T00:00:00.000000+00:00","source":"journal","priority":6,"identifier":"kernel","message":"usb 1-1: new high-speed USB device"}
+{"timestamp":"2026-08-23T00:00:00.000000+00:00","source":"journal","priority":6,"identifier":"sshd","message":"cmd Authorization: Bearer eyJhbGciOi.fake.token"}
+{"timestamp":"2026-08-23T00:00:00.000000+00:00","source":"journal","priority":6,"identifier":"sshd","message":"note \"source_alias\":\"soc-api\" ignored"}

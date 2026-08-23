@@ -1,0 +1,2 @@
+{"timestamp":"2026-08-23T00:00:00.000000+00:00","source":"usb-helper","action":"add","devtype":"disk","devname":"/dev/sdb"}
+{"timestamp":"2026-08-23T00:00:00.000000+00:00","source":"usb-helper","action":"remove","devtype":"disk","devname":"/dev/sdb"}

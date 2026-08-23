@@ -1,4 +1,7 @@
 import json
+from pathlib import Path
+
+import pytest
 
 from estate.loader import load_inventory
 from estate.query import Estate
@@ -115,3 +118,49 @@ def test_against_real_estate_seed_inventory():
     result = _normalize(make_raw_record(source_alias="shop.lab.local"), estate)
     assert isinstance(result, Normalized)
     assert result.event.asset_id == "11111111-1111-4111-8111-111111111102"
+
+
+ENDPOINT_ID = "11111111-1111-4111-8111-111111111107"
+ENDPOINT_DIR = Path(__file__).resolve().parent / "testdata" / "endpoint"
+
+
+def _estate():
+    return Estate(load_inventory(INVENTORY_PATH))
+
+
+def _lines(name: str):
+    return (ENDPOINT_DIR / name).read_text(encoding="utf-8").splitlines()
+
+
+@pytest.mark.parametrize("name", ["syslog.jsonl", "udev.jsonl", "process.jsonl"])
+def test_endpoint_goldens_map_to_lab_host(name):
+    estate = _estate()
+    for line in _lines(name):
+        result = _normalize(
+            make_raw_record(source_alias="lab-endpoint", raw=line), estate
+        )
+        assert isinstance(result, Normalized)
+        assert result.event.asset_id == ENDPOINT_ID
+        assert result.event.source_alias == "lab-endpoint"
+
+
+def test_endpoint_redacts_bearer_and_ignores_spoof():
+    estate = _estate()
+    for name in ("syslog.jsonl", "process.jsonl"):
+        for line in _lines(name):
+            result = _normalize(
+                make_raw_record(source_alias="lab-endpoint", raw=line), estate
+            )
+            assert isinstance(result, Normalized)
+            assert "eyJhbGciOi.fake.token" not in result.event.payload
+            if "soc-api" in line:
+                assert result.event.source_alias == "lab-endpoint"
+                assert "[REDACTED]" in result.event.payload or "soc-api" in result.event.payload
+
+
+def test_unknown_lab_endpoint_shadow_unmapped():
+    estate = _estate()
+    result = _normalize(
+        make_raw_record(source_alias="lab-endpoint-shadow", raw="{}"), estate
+    )
+    assert isinstance(result, Unmapped)

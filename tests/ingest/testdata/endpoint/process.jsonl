@@ -1,0 +1,2 @@
+{"timestamp":"2026-08-23T00:00:00.000000+00:00","source":"usb-helper","action":"file_create","path":"/tmp/lab-usb-marker"}
+{"timestamp":"2026-08-23T00:00:00.000000+00:00","source":"usb-helper","action":"process_create","image":"/tmp/lab-usb-marker","command_line":"/tmp/lab-usb-marker Authorization: Bearer eyJhbGciOi.fake.token \"source_alias\":\"soc-api\""}
