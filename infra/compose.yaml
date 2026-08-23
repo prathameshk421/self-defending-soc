@@ -149,6 +149,9 @@ services:
       - vector-data:/var/lib/vector
       # Lab services write their logs here; Vector only reads.
       - lab-logs:/var/log/lab:ro
+      - ./endpoint/logs/syslog.log:/var/log/lab/lab-endpoint/syslog.log:ro
+      - ./endpoint/logs/udev.log:/var/log/lab/lab-endpoint/udev.log:ro
+      - ./endpoint/logs/process.log:/var/log/lab/lab-endpoint/process.log:ro
     environment:
       KAFKA_VECTOR_PASSWORD: ${KAFKA_VECTOR_PASSWORD}
       VECTOR_WEBHOOK_TOKEN: ${VECTOR_WEBHOOK_TOKEN}

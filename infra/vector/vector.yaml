@@ -25,6 +25,21 @@ sources:
   file_soc_api:
     type: file
     include: ["/var/log/lab/soc-api/access.log"]
+  file_lab_endpoint_syslog:
+    type: file
+    include: ["/var/log/lab/lab-endpoint/syslog.log"]
+    max_line_bytes: 65536
+    ignore_not_found: true
+  file_lab_endpoint_udev:
+    type: file
+    include: ["/var/log/lab/lab-endpoint/udev.log"]
+    max_line_bytes: 65536
+    ignore_not_found: true
+  file_lab_endpoint_process:
+    type: file
+    include: ["/var/log/lab/lab-endpoint/process.log"]
+    max_line_bytes: 65536
+    ignore_not_found: true
 
   # --- authenticated HTTP listeners: one per sender, one token each ---
   http_webhooks:
@@ -126,6 +141,45 @@ transforms:
         "raw": raw,
         "observed_at": format_timestamp!(now(), format: "%+")
       }
+  wrap_lab_endpoint_syslog:
+    type: remap
+    inputs: [file_lab_endpoint_syslog]
+    source: |
+      raw = strip_ansi_escape_codes(string!(.message))
+      . = {
+        "lab_id": "default",
+        "source_alias": "lab-endpoint",
+        "source_type": "file",
+        "collector": "vector",
+        "raw": raw,
+        "observed_at": format_timestamp!(now(), format: "%+")
+      }
+  wrap_lab_endpoint_udev:
+    type: remap
+    inputs: [file_lab_endpoint_udev]
+    source: |
+      raw = strip_ansi_escape_codes(string!(.message))
+      . = {
+        "lab_id": "default",
+        "source_alias": "lab-endpoint",
+        "source_type": "file",
+        "collector": "vector",
+        "raw": raw,
+        "observed_at": format_timestamp!(now(), format: "%+")
+      }
+  wrap_lab_endpoint_process:
+    type: remap
+    inputs: [file_lab_endpoint_process]
+    source: |
+      raw = strip_ansi_escape_codes(string!(.message))
+      . = {
+        "lab_id": "default",
+        "source_alias": "lab-endpoint",
+        "source_type": "file",
+        "collector": "vector",
+        "raw": raw,
+        "observed_at": format_timestamp!(now(), format: "%+")
+      }
 
 sinks:
   kafka_raw:
@@ -137,6 +191,9 @@ sinks:
       - wrap_soc_api
       - wrap_webhooks
       - wrap_redteam
+      - wrap_lab_endpoint_syslog
+      - wrap_lab_endpoint_udev
+      - wrap_lab_endpoint_process
     bootstrap_servers: kafka:9092
     topic: soc.raw.v1
     key_field: source_alias
