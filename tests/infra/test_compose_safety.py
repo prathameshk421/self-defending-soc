@@ -62,3 +62,34 @@ def test_kafka_init_raw_retention_bytes():
     assert "soc.raw.v1" in text
     assert "retention.bytes=1073741824" in text
     assert "retention.ms=172800000" in text
+
+
+def test_ingest_service_is_closed():
+    data = yaml.safe_load(COMPOSE.read_text(encoding="utf-8"))
+    svc = data["services"]["soc-agent-ingest"]
+    assert svc.get("ports") in (None, [])
+    assert svc.get("privileged") in (None, False)
+    assert svc.get("network_mode") != "host"
+    assert svc["mem_limit"] == "512m"
+    assert svc["cap_drop"] == ["ALL"]
+    assert "no-new-privileges:true" in svc["security_opt"]
+    volumes = [str(v) for v in svc.get("volumes", [])]
+    for vol in volumes:
+        assert "docker.sock" not in vol
+        assert "monitor.sock" not in vol
+        assert "endpoint/logs" not in vol
+    env = svc["environment"]
+    assert env["INGEST_BOOTSTRAP"] == "kafka:9092"
+    assert env["INGEST_REGISTRY_URL"] == "http://karapace:8081"
+    assert env["INGEST_SASL_USERNAME"] == "ingest"
+    assert env["INGEST_GROUP_ID"] == "ingest-normalizer"
+    depends = svc["depends_on"]
+    assert depends["kafka"]["condition"] == "service_healthy"
+    assert depends["kafka-init"]["condition"] == "service_completed_successfully"
+    assert depends["karapace"]["condition"] == "service_healthy"
+    dockerfile = (REPO_ROOT / "infra" / "ingest" / "Dockerfile").read_text(
+        encoding="utf-8"
+    )
+    assert "python:3.12-bookworm@sha256:80f5d259a5969c86f6c92145d572de4a68c68e0edd28d4367dec0fb411b42af3" in dockerfile
+    assert "pip install --no-cache-dir '.[kafka]'" in dockerfile
+    assert "bind" not in dockerfile.lower()
