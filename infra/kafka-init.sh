@@ -17,6 +17,9 @@ create_topic() {
 
 # Topic budget: raw 48h, events 7d, unmapped/dlq 72h.
 create_topic soc.raw.v1 3 172800000
+"$BIN/kafka-configs.sh" --bootstrap-server "$BOOTSTRAP" --command-config "$CONF" \
+  --alter --entity-type topics --entity-name soc.raw.v1 \
+  --add-config retention.bytes=1073741824,retention.ms=172800000
 create_topic soc.events.v1 3 604800000
 create_topic soc.ingest.unmapped.v1 1 259200000
 create_topic soc.ingest.dlq.v1 1 259200000

@@ -55,3 +55,10 @@ def test_endpoint_scripts_have_no_docker_sock_or_host_net():
         body = "\n".join(lines)
         assert "docker.sock" not in body, path
         assert "network_mode: host" not in body, path
+
+
+def test_kafka_init_raw_retention_bytes():
+    text = (REPO_ROOT / "infra" / "kafka-init.sh").read_text(encoding="utf-8")
+    assert "soc.raw.v1" in text
+    assert "retention.bytes=1073741824" in text
+    assert "retention.ms=172800000" in text
