@@ -171,6 +171,9 @@ assets:
       - id: endpoint-audit
         kind: file
         locator: "/var/log/lab-endpoint/audit.log"
+      - id: endpoint-net
+        kind: file
+        locator: "/var/log/lab-endpoint/net.log"
     in_scope_red_team: false
     red_team_skip: true
 

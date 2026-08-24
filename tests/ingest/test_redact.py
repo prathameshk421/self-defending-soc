@@ -52,3 +52,12 @@ def test_uuid_not_redacted():
     line = "request id 11111111-1111-4111-8111-111111111102 completed"
     result = redact(line)
     assert result.text == line
+
+
+def test_dns_qname_bearer_token_redacted():
+    dotted = "Authorization.Bearer.eyJhbGciOi.fake.token.example."
+    encoded = "Authorization%3A%20Bearer%20eyJhbGciOi.fake.token.example."
+    for qname in (dotted, encoded):
+        result = redact(qname)
+        assert "eyJhbGciOi.fake.token" not in result.text
+        assert PLACEHOLDER in result.text

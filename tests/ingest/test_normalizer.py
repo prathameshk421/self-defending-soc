@@ -133,7 +133,8 @@ def _lines(name: str):
 
 
 @pytest.mark.parametrize(
-    "name", ["syslog.jsonl", "udev.jsonl", "process.jsonl", "audit.jsonl"]
+    "name",
+    ["syslog.jsonl", "udev.jsonl", "process.jsonl", "audit.jsonl", "net.jsonl"],
 )
 def test_endpoint_goldens_map_to_lab_host(name):
     estate = _estate()
@@ -148,7 +149,7 @@ def test_endpoint_goldens_map_to_lab_host(name):
 
 def test_endpoint_redacts_bearer_and_ignores_spoof():
     estate = _estate()
-    for name in ("syslog.jsonl", "process.jsonl", "audit.jsonl"):
+    for name in ("syslog.jsonl", "process.jsonl", "audit.jsonl", "net.jsonl"):
         for line in _lines(name):
             result = _normalize(
                 make_raw_record(source_alias="lab-endpoint", raw=line), estate

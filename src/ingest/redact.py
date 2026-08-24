@@ -23,6 +23,8 @@ _PATTERNS: list[re.Pattern[str]] = [
     ),
     # JWTs (three base64url segments).
     re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b"),
+    # Compact / DNS-qname JWT-shaped tokens (goldens use eyJhbGciOi.fake.token).
+    re.compile(r"eyJ[A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]+){2,}"),
     # AWS-style access key ids.
     re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
     # Private key blocks.

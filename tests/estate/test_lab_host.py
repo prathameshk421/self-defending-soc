@@ -22,6 +22,7 @@ def test_default_inventory_lab_host():
         "endpoint-udev",
         "endpoint-process",
         "endpoint-audit",
+        "endpoint-net",
     }
     locators = {s.id: s.locator for s in host.log_sources}
     assert locators == {
@@ -29,6 +30,7 @@ def test_default_inventory_lab_host():
         "endpoint-udev": "/var/log/lab-endpoint/udev.log",
         "endpoint-process": "/var/log/lab-endpoint/process.log",
         "endpoint-audit": "/var/log/lab-endpoint/audit.log",
+        "endpoint-net": "/var/log/lab-endpoint/net.log",
     }
     assert host.aliases == ["lab-endpoint"]
     with pytest.raises(RespondForbidden):
