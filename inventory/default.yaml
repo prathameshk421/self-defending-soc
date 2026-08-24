@@ -161,13 +161,13 @@ assets:
     log_sources:
       - id: endpoint-syslog
         kind: file
-        locator: "/var/log/syslog"
+        locator: "/var/log/lab-endpoint/syslog.log"
       - id: endpoint-udev
         kind: file
-        locator: "/var/log/udev"
+        locator: "/var/log/lab-endpoint/udev.log"
       - id: endpoint-process
         kind: file
-        locator: "/var/log/audit/process"
+        locator: "/var/log/lab-endpoint/process.log"
     in_scope_red_team: false
     red_team_skip: true
 

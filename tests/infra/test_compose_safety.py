@@ -21,7 +21,7 @@ FILE_BINDS = [
 
 def test_endpoint_log_stubs_are_regular_files():
     LOG_DIR.mkdir(parents=True, exist_ok=True)
-    for name in ("syslog.log", "udev.log", "process.log"):
+    for name in ("syslog.log", "udev.log", "process.log", "audit.log", "net.log"):
         path = LOG_DIR / name
         if not path.exists():
             path.touch()

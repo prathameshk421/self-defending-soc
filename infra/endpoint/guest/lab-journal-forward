@@ -23,7 +23,7 @@ FIELDS = (
 PARSE_CAP = 262144
 RATE = 20
 ROTATE_BYTES = 8 * 1024 * 1024
-DIR_CAP = 32 * 1024 * 1024
+DIR_CAP = 80 * 1024 * 1024
 BATCH_N = 32
 BATCH_S = 1.0
 
@@ -40,14 +40,12 @@ def _open_log():
     return os.fdopen(fd, "ab", buffering=0)
 
 
-def _rotate(fh):
-    fh.close()
-    bak = LOG_PATH.with_name(LOG_PATH.name + ".1")
-    if bak.exists():
-        bak.unlink()
-    LOG_PATH.rename(bak)
-    LOG_PATH.touch()
-    return _open_log()
+def _truncate_in_place(fh):
+    fh.flush()
+    os.fsync(fh.fileno())
+    fh.truncate(0)
+    fh.seek(0)
+    return fh
 
 
 def _dir_size() -> int:
@@ -138,7 +136,7 @@ def main() -> int:
             window_n += 1
             if LOG_PATH.stat().st_size >= ROTATE_BYTES:
                 flush()
-                fh = _rotate(fh)
+                fh = _truncate_in_place(fh)
             if _dir_size() >= DIR_CAP:
                 dropped += 1
                 continue

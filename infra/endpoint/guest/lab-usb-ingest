@@ -1,5 +1,5 @@
 #!/bin/sh
-# udev RUN+= helper. Copied stick bytes still run as root (autorun demo).
+# udev RUN+= helper. Copy-only: copies the marker and writes file_create; does not exec.
 set -eu
 
 if [ -n "${1:-}" ]; then
@@ -24,23 +24,26 @@ append_json() {
   # $1 file $2 json-line without newline
   path=$1
   line=$2
+  dirsz=$(du -sb "$LOGDIR" | awk '{print $1}')
+  if [ "$dirsz" -ge 83886080 ]; then
+    return 0
+  fi
   [ -f "$path" ] || exit 1
   [ ! -L "$path" ] || exit 1
   printf '%s\n' "$line" >>"$path"
   python3 -c "import os; f=open('$path','ab'); os.fsync(f.fileno()); f.close()"
 }
 
-rotate_if_needed() {
+truncate_if_needed() {
   path=$1
   sz=$(wc -c <"$path" | tr -d ' ')
   if [ "$sz" -ge 8388608 ]; then
-    mv "$path" "$path.1"
     : >"$path"
   fi
 }
 
 mkdir -p "$LOGDIR" "$MNT"
-rotate_if_needed "$UDEV_LOG" 2>/dev/null || : >"$UDEV_LOG"
+truncate_if_needed "$UDEV_LOG" 2>/dev/null || : >"$UDEV_LOG"
 
 if [ "$ACTION" = "remove" ]; then
   append_json "$UDEV_LOG" "{\"timestamp\":\"$TS\",\"source\":\"usb-helper\",\"action\":\"remove\",\"devtype\":\"${DEVTYPE:-disk}\",\"devname\":\"$DEVNAME\"}"
@@ -64,8 +67,6 @@ fi
 umount "$MNT"
 chmod 0755 /tmp/lab-usb-marker
 
-rotate_if_needed "$PROCESS_LOG" 2>/dev/null || : >"$PROCESS_LOG"
+truncate_if_needed "$PROCESS_LOG" 2>/dev/null || : >"$PROCESS_LOG"
 append_json "$PROCESS_LOG" "{\"timestamp\":\"$TS\",\"source\":\"usb-helper\",\"action\":\"file_create\",\"path\":\"/tmp/lab-usb-marker\"}"
-append_json "$PROCESS_LOG" "{\"timestamp\":\"$TS\",\"source\":\"usb-helper\",\"action\":\"process_create\",\"image\":\"/tmp/lab-usb-marker\",\"command_line\":\"/tmp/lab-usb-marker\"}"
-
-exec /tmp/lab-usb-marker
+exit 0
