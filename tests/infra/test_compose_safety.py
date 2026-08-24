@@ -16,6 +16,8 @@ FILE_BINDS = [
     "./endpoint/logs/syslog.log:/var/log/lab/lab-endpoint/syslog.log:ro",
     "./endpoint/logs/udev.log:/var/log/lab/lab-endpoint/udev.log:ro",
     "./endpoint/logs/process.log:/var/log/lab/lab-endpoint/process.log:ro",
+    "./endpoint/logs/audit.log:/var/log/lab/lab-endpoint/audit.log:ro",
+    "./endpoint/logs/net.log:/var/log/lab/lab-endpoint/net.log:ro",
 ]
 
 

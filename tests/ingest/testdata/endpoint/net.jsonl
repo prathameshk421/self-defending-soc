@@ -1,0 +1,4 @@
+{"timestamp":"2026-08-23T00:00:00.000000+00:00","source":"nft","event":"new","proto":"tcp","daddr":"1.2.3.4","dport":443}
+{"timestamp":"2026-08-23T00:00:00.000000+00:00","source":"dns","qname":"Authorization.Bearer.eyJhbGciOi.fake.token.example.","qtype":"A"}
+{"timestamp":"2026-08-23T00:00:00.000000+00:00","source":"dns","qname":"Authorization%3A%20Bearer%20eyJhbGciOi.fake.token.example.","qtype":"A"}
+{"timestamp":"2026-08-23T00:00:00.000000+00:00","source":"nft","event":"new","proto":"tcp","daddr":"1.2.3.4","dport":443,"note":"\"source_alias\":\"soc-api\""}

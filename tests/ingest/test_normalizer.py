@@ -132,7 +132,10 @@ def _lines(name: str):
     return (ENDPOINT_DIR / name).read_text(encoding="utf-8").splitlines()
 
 
-@pytest.mark.parametrize("name", ["syslog.jsonl", "udev.jsonl", "process.jsonl"])
+@pytest.mark.parametrize(
+    "name",
+    ["syslog.jsonl", "udev.jsonl", "process.jsonl", "audit.jsonl", "net.jsonl"],
+)
 def test_endpoint_goldens_map_to_lab_host(name):
     estate = _estate()
     for line in _lines(name):
@@ -146,7 +149,7 @@ def test_endpoint_goldens_map_to_lab_host(name):
 
 def test_endpoint_redacts_bearer_and_ignores_spoof():
     estate = _estate()
-    for name in ("syslog.jsonl", "process.jsonl"):
+    for name in ("syslog.jsonl", "process.jsonl", "audit.jsonl", "net.jsonl"):
         for line in _lines(name):
             result = _normalize(
                 make_raw_record(source_alias="lab-endpoint", raw=line), estate

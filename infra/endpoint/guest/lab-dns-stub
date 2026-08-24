@@ -1,0 +1,108 @@
+#!/usr/bin/python3
+"""Loopback DNS stub: log qname/qtype to stdout, reply REFUSED. Does not recurse."""
+
+from __future__ import annotations
+
+import json
+import socket
+import select
+import sys
+from datetime import datetime, timezone
+
+BIND_ADDR = ("127.0.0.1", 53)
+STRING_MAX = 16384
+
+
+def _now_ts() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="microseconds")
+
+
+def _truncate(message: str) -> str:
+    raw = message.encode("utf-8")
+    if len(raw) <= STRING_MAX:
+        return message
+    cut = raw[:STRING_MAX].decode("utf-8", errors="ignore")
+    return cut + "..."
+
+
+def parse_qname(query: bytes) -> tuple[str, str]:
+    if len(query) < 12:
+        return ".", "A"
+    idx = 12
+    labels: list[str] = []
+    while idx < len(query):
+        n = query[idx]
+        if n == 0:
+            idx += 1
+            break
+        if n & 0xC0 == 0xC0:
+            break
+        idx += 1
+        labels.append(query[idx : idx + n].decode("ascii", errors="replace"))
+        idx += n
+    qname = ".".join(labels) + "." if labels else "."
+    qtype = "A"
+    if idx + 2 <= len(query):
+        t = int.from_bytes(query[idx : idx + 2], "big")
+        qtype = {1: "A", 28: "AAAA", 16: "TXT", 12: "PTR"}.get(t, str(t))
+    return qname, qtype
+
+
+def refused(query: bytes) -> bytes:
+    if len(query) < 12:
+        return b""
+    out = bytearray(query)
+    out[2] = out[2] | 0x80
+    out[3] = (out[3] & 0xF0) | 0x05
+    return bytes(out)
+
+
+def emit_query(qname: str, qtype: str) -> None:
+    rec = {
+        "timestamp": _now_ts(),
+        "source": "dns",
+        "qname": _truncate(qname),
+        "qtype": _truncate(qtype),
+    }
+    sys.stdout.write(json.dumps(rec, ensure_ascii=False, separators=(",", ":")) + "\n")
+    sys.stdout.flush()
+
+
+def main() -> int:
+    udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    udp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    # bind("127.0.0.1", 53) UDP; TCP below. No upstream resolver.
+    udp.bind(("127.0.0.1", 53))
+    tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    tcp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    tcp.bind(("127.0.0.1", 53))
+    tcp.listen(4)
+    try:
+        while True:
+            readable, _, _ = select.select([udp, tcp], [], [], 1.0)
+            if udp in readable:
+                data, addr = udp.recvfrom(4096)
+                qname, qtype = parse_qname(data)
+                emit_query(qname, qtype)
+                udp.sendto(refused(data), addr)
+            if tcp in readable:
+                conn, _ = tcp.accept()
+                with conn:
+                    hdr = conn.recv(2)
+                    if len(hdr) == 2:
+                        n = int.from_bytes(hdr, "big")
+                        payload = conn.recv(n)
+                        qname, qtype = parse_qname(payload)
+                        emit_query(qname, qtype)
+                        resp = refused(payload)
+                        conn.sendall(len(resp).to_bytes(2, "big") + resp)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        udp.close()
+        tcp.close()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

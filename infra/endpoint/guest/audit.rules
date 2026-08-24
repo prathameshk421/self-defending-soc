@@ -1,0 +1,8 @@
+## lab-endpoint allowlisted SYSCALL watches; immutable after load
+-D
+-a never,exit -F dir=/var/log/lab-endpoint
+-a never,exit -F dir=/var/lib/lab-endpoint
+-a always,exit -F arch=b64 -S execve -k lab-exec
+-a always,exit -F arch=b64 -S openat -F a2&0100 -k lab-creat
+-a always,exit -F arch=b64 -S unlink,unlinkat,rename,renameat,renameat2 -k lab-unlink
+-e 2

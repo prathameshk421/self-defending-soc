@@ -43,10 +43,11 @@ def test_run_vm_exports_logs_dir_only():
     assert "latest" not in text.split("IMAGE_URL", 1)[-1].split("\n", 1)[0]
 
 
-def test_run_vm_recreates_overlay_and_stays_nic_none():
+def test_run_vm_user_nic_restrict_on():
     text = (REPO_ROOT / "infra/endpoint/run-vm.sh").read_text(encoding="utf-8")
     assert "rm -f" in text and "overlay.qcow2" in text
-    assert "-nic none" in text
+    assert "-nic user,model=virtio,restrict=on" in text
+    assert "-nic none" not in text
     assert "hostfwd" not in text
     for name in ("syslog.log", "udev.log", "process.log", "audit.log", "net.log"):
         assert name in text

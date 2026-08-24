@@ -1,0 +1,4 @@
+{"timestamp":"2026-08-23T00:00:00.000000+00:00","source":"auditd","syscall":"execve","command_line":"/bin/echo Authorization: Bearer eyJhbGciOi.fake.token"}
+{"timestamp":"2026-08-23T00:00:00.000000+00:00","source":"auditd","syscall":"openat","path":"/tmp/lab-creat"}
+{"timestamp":"2026-08-23T00:00:00.000000+00:00","source":"auditd","syscall":"unlink","path":"/tmp/lab-creat"}
+{"timestamp":"2026-08-23T00:00:00.000000+00:00","source":"auditd","syscall":"execve","command_line":"/bin/echo Authorization: Bearer eyJhbGciOi.fake.token \"source_alias\":\"soc-api\""}

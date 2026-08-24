@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Boot the pinned Debian 12 guest. 9p-exports infra/endpoint/logs only. -nic none.
+# Boot the pinned Debian 12 guest. 9p-exports infra/endpoint/logs only.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 if [ -n "${1:-}" ]; then
@@ -22,7 +22,7 @@ SEED="$RUN/seed.iso"
 SOCK="$RUN/monitor.sock"
 SHARE="$LOGS"
 
-mkdir -p "$RUN" "$LOGS"
+mkdir -p "$RUN" "$LOGS" "$RUN/debs"
 chmod 0700 "$RUN"
 touch "$LOGS/syslog.log" "$LOGS/udev.log" "$LOGS/process.log" "$LOGS/audit.log" "$LOGS/net.log"
 if [ -L "$LOGS/syslog.log" ] || [ -L "$LOGS/udev.log" ] || [ -L "$LOGS/process.log" ] \
@@ -30,6 +30,43 @@ if [ -L "$LOGS/syslog.log" ] || [ -L "$LOGS/udev.log" ] || [ -L "$LOGS/process.l
   echo "log paths must be regular files" >&2
   exit 1
 fi
+
+DEBS="$RUN/debs"
+fetch_deb() {
+  local url=$1 sha=$2
+  local dest="$DEBS/$(basename "$url")"
+  if [ ! -f "$dest" ]; then
+    echo "downloading $url"
+    curl -L --fail -o "$dest.partial" "$url"
+    got="$(shasum -a 256 "$dest.partial" | awk '{print $1}')"
+    if [ "$got" != "$sha" ]; then
+      echo "checksum mismatch $dest" >&2
+      rm -f "$dest.partial"
+      exit 1
+    fi
+    mv "$dest.partial" "$dest"
+  else
+    got="$(shasum -a 256 "$dest" | awk '{print $1}')"
+    if [ "$got" != "$sha" ]; then
+      echo "checksum mismatch $dest" >&2
+      exit 1
+    fi
+  fi
+}
+fetch_deb "https://deb.debian.org/debian/pool/main/a/audit/libaudit1_3.0.9-1_amd64.deb" \
+  "30954df4b5a7c505661ba8ae5e6ea94f5805e408899fb400783bb166eb5ff306"
+fetch_deb "https://deb.debian.org/debian/pool/main/a/audit/libauparse0_3.0.9-1_amd64.deb" \
+  "ee3b6378d7145e88bf2d226a735b124b9b85d792bd1ead10da797427853894d3"
+fetch_deb "https://deb.debian.org/debian/pool/main/t/tcp-wrappers/libwrap0_7.6.q-32_amd64.deb" \
+  "cbce2669a3ba4d74cfdc52b14f38014893e23d85a33d109a3422c342eefc55f8"
+fetch_deb "https://deb.debian.org/debian/pool/main/a/audit/auditd_3.0.9-1_amd64.deb" \
+  "0d5a20ad6a0348a183fa3f2b58aff06ecd0e475cd9322c8bd4443db3e6454cd1"
+fetch_deb "https://deb.debian.org/debian/pool/main/j/jansson/libjansson4_2.14-2_amd64.deb" \
+  "3fc9742f9f1a37bcb9931df6074b4d1483419ef832ad5349f47323e75fc27864"
+fetch_deb "https://deb.debian.org/debian/pool/main/n/nftables/libnftables1_1.0.6-2+deb12u2_amd64.deb" \
+  "3a8223f9bfba99d97bf25296ac83de307ab036e1df63e5965f88809266851947"
+fetch_deb "https://deb.debian.org/debian/pool/main/n/nftables/nftables_1.0.6-2+deb12u2_amd64.deb" \
+  "966ff20ce58c17163a771c02ddbca264291408f94c512bd85dd18da0ebdbe88c"
 
 if [ ! -f "$CACHE" ]; then
   echo "downloading $IMAGE_URL"
@@ -51,7 +88,16 @@ CIDIR="$(mktemp -d)"
 cp "$GUEST/cloud-init.yaml" "$CIDIR/user-data"
 printf 'instance-id: lab-endpoint\nlocal-hostname: lab-endpoint\n' >"$CIDIR/meta-data"
 cp "$GUEST/journal_map.py" "$GUEST/lab-journal-forward" "$GUEST/lab-usb-ingest" \
-  "$GUEST/99-lab-usb.rules" "$GUEST/lab-journal-forward.service" "$CIDIR/"
+  "$GUEST/99-lab-usb.rules" "$GUEST/lab-journal-forward.service" \
+  "$GUEST/lab-audit-forward" "$GUEST/lab-audit-forward.service" \
+  "$GUEST/audit.rules" "$GUEST/auditd.conf" \
+  "$GUEST/lab-net-forward" "$GUEST/lab-dns-stub" "$GUEST/lab-net-wrap" \
+  "$GUEST/lab-net-forward.service" "$GUEST/nftables.conf" "$CIDIR/"
+cp "$DEBS/libaudit1_3.0.9-1_amd64.deb" "$DEBS/libauparse0_3.0.9-1_amd64.deb" \
+  "$DEBS/libwrap0_7.6.q-32_amd64.deb" "$DEBS/auditd_3.0.9-1_amd64.deb" \
+  "$DEBS/libjansson4_2.14-2_amd64.deb" \
+  "$DEBS/libnftables1_1.0.6-2+deb12u2_amd64.deb" \
+  "$DEBS/nftables_1.0.6-2+deb12u2_amd64.deb" "$CIDIR/"
 if command -v genisoimage >/dev/null 2>&1; then
   genisoimage -output "$SEED" -volid cidata -joliet -rock "$CIDIR"
 elif command -v mkisofs >/dev/null 2>&1; then
@@ -69,7 +115,7 @@ rm -rf "$CIDIR"
 exec qemu-system-x86_64 \
   -m 1024 \
   -smp 2 \
-  -nic none \
+  -nic user,model=virtio,restrict=on \
   -drive "file=$OVERLAY,if=virtio,format=qcow2" \
   -cdrom "$SEED" \
   -fsdev "local,id=lablogs,path=$SHARE,security_model=mapped,writeout=immediate" \

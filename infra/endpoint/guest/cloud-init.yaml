@@ -15,14 +15,34 @@ package_update: false
 packages: []
 
 runcmd:
-  - install -d -m 0755 /usr/local/lib/lab-endpoint /var/log/lab-endpoint /var/lib/lab-endpoint /mnt/lab-stick
+  - install -d -m 0755 /usr/local/lib/lab-endpoint /var/log/lab-endpoint /var/lib/lab-endpoint /mnt/lab-stick /etc/audit/rules.d
+  - dpkg -i /var/lib/cloud/instance/seed/nocloud/libaudit1_3.0.9-1_amd64.deb
+  - dpkg -i /var/lib/cloud/instance/seed/nocloud/libauparse0_3.0.9-1_amd64.deb
+  - dpkg -i /var/lib/cloud/instance/seed/nocloud/libwrap0_7.6.q-32_amd64.deb
+  - dpkg -i /var/lib/cloud/instance/seed/nocloud/auditd_3.0.9-1_amd64.deb
+  - dpkg -i /var/lib/cloud/instance/seed/nocloud/libjansson4_2.14-2_amd64.deb
+  - dpkg -i /var/lib/cloud/instance/seed/nocloud/libnftables1_1.0.6-2+deb12u2_amd64.deb
+  - dpkg -i /var/lib/cloud/instance/seed/nocloud/nftables_1.0.6-2+deb12u2_amd64.deb
   - install -m 0644 /var/lib/cloud/instance/seed/nocloud/journal_map.py /usr/local/lib/lab-endpoint/journal_map.py
   - install -m 0755 /var/lib/cloud/instance/seed/nocloud/lab-journal-forward /usr/local/sbin/lab-journal-forward
   - install -m 0755 /var/lib/cloud/instance/seed/nocloud/lab-usb-ingest /usr/local/sbin/lab-usb-ingest
+  - install -m 0755 /var/lib/cloud/instance/seed/nocloud/lab-audit-forward /usr/local/sbin/lab-audit-forward
+  - install -m 0755 /var/lib/cloud/instance/seed/nocloud/lab-net-forward /usr/local/sbin/lab-net-forward
+  - install -m 0755 /var/lib/cloud/instance/seed/nocloud/lab-dns-stub /usr/local/sbin/lab-dns-stub
+  - install -m 0755 /var/lib/cloud/instance/seed/nocloud/lab-net-wrap /usr/local/sbin/lab-net-wrap
   - install -m 0644 /var/lib/cloud/instance/seed/nocloud/99-lab-usb.rules /etc/udev/rules.d/99-lab-usb.rules
   - install -m 0644 /var/lib/cloud/instance/seed/nocloud/lab-journal-forward.service /etc/systemd/system/lab-journal-forward.service
+  - install -m 0644 /var/lib/cloud/instance/seed/nocloud/lab-audit-forward.service /etc/systemd/system/lab-audit-forward.service
+  - install -m 0644 /var/lib/cloud/instance/seed/nocloud/lab-net-forward.service /etc/systemd/system/lab-net-forward.service
+  - install -m 0640 /var/lib/cloud/instance/seed/nocloud/audit.rules /etc/audit/rules.d/lab.rules
+  - install -m 0640 /var/lib/cloud/instance/seed/nocloud/auditd.conf /etc/audit/auditd.conf
+  - install -m 0644 /var/lib/cloud/instance/seed/nocloud/nftables.conf /etc/nftables.conf
   - udevadm control --reload
+  - systemctl disable --now ssh.service systemd-resolved.service || true
+  - rm -f /etc/resolv.conf
+  - printf 'nameserver 127.0.0.1\n' > /etc/resolv.conf
+  - nft -f /etc/nftables.conf || true
   - systemctl daemon-reload
-  - systemctl enable --now lab-journal-forward.service
+  - systemctl enable --now auditd.service lab-journal-forward.service lab-audit-forward.service lab-net-forward.service
   - mount -t 9p -o trans=virtio,version=9p2000.L,cache=none labendpoint /var/log/lab-endpoint || true
-  - touch /var/log/lab-endpoint/syslog.log /var/log/lab-endpoint/udev.log /var/log/lab-endpoint/process.log
+  - touch /var/log/lab-endpoint/syslog.log /var/log/lab-endpoint/udev.log /var/log/lab-endpoint/process.log /var/log/lab-endpoint/audit.log /var/log/lab-endpoint/net.log

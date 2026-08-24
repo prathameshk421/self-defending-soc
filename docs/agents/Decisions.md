@@ -128,4 +128,20 @@ Time retention (48h) stays. Byte cap so an endpoint flood cannot fill the broker
 
 ### In-guest auditd (Phase 1) supersedes “No auditd” for the guest only
 
-Vector still file-tails. Envelope `source_alias` stays `lab-endpoint`.
+Vector still file-tails. Envelope `source_alias` stays `lab-endpoint`. Payload `source=auditd` is a channel tag, not kernel proof.
+
+## 2026-08-24 — In-guest auditd (Phase 1)
+
+### In-guest auditd; Vector still file tails `audit.log`
+
+OS-wide exec/file keep-filter runs in the guest (`lab-audit-forward`). Vector has no auditd source. Envelope alias stays `lab-endpoint`.
+
+### Payload `source=auditd` is untrusted self-report
+
+Detect must not treat alias or `source` as kernel proof. Guest JSON can be forged.
+
+## 2026-08-24 — Network JSON (Phase 2)
+
+### NIC `restrict=on`; exclusive net writer; no pcap
+
+`-nic user,model=virtio,restrict=on` blocks guest TCP/UDP to host/internet. SLIRP still exists inside the operator QEMU process. One process writes `net.log`. Guest DNS is an in-guest stub (REFUSED, no recurse to `10.0.2.3`). sshd is disabled. Payload `source` `nft`|`dns` is untrusted self-report.

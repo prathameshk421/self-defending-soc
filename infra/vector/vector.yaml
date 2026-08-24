@@ -40,6 +40,16 @@ sources:
     include: ["/var/log/lab/lab-endpoint/process.log"]
     max_line_bytes: 65536
     ignore_not_found: true
+  file_lab_endpoint_audit:
+    type: file
+    include: ["/var/log/lab/lab-endpoint/audit.log"]
+    max_line_bytes: 65536
+    ignore_not_found: true
+  file_lab_endpoint_net:
+    type: file
+    include: ["/var/log/lab/lab-endpoint/net.log"]
+    max_line_bytes: 65536
+    ignore_not_found: true
 
   # --- authenticated HTTP listeners: one per sender, one token each ---
   http_webhooks:
@@ -180,6 +190,32 @@ transforms:
         "raw": raw,
         "observed_at": format_timestamp!(now(), format: "%+")
       }
+  wrap_lab_endpoint_audit:
+    type: remap
+    inputs: [file_lab_endpoint_audit]
+    source: |
+      raw = strip_ansi_escape_codes(string!(.message))
+      . = {
+        "lab_id": "default",
+        "source_alias": "lab-endpoint",
+        "source_type": "file",
+        "collector": "vector",
+        "raw": raw,
+        "observed_at": format_timestamp!(now(), format: "%+")
+      }
+  wrap_lab_endpoint_net:
+    type: remap
+    inputs: [file_lab_endpoint_net]
+    source: |
+      raw = strip_ansi_escape_codes(string!(.message))
+      . = {
+        "lab_id": "default",
+        "source_alias": "lab-endpoint",
+        "source_type": "file",
+        "collector": "vector",
+        "raw": raw,
+        "observed_at": format_timestamp!(now(), format: "%+")
+      }
 
 sinks:
   kafka_raw_app:
@@ -211,6 +247,8 @@ sinks:
       - wrap_lab_endpoint_syslog
       - wrap_lab_endpoint_udev
       - wrap_lab_endpoint_process
+      - wrap_lab_endpoint_audit
+      - wrap_lab_endpoint_net
     bootstrap_servers: kafka:9092
     topic: soc.raw.v1
     key_field: source_alias

@@ -1,0 +1,330 @@
+#!/usr/bin/python3
+"""Forward allowlisted audit SYSCALL records onto audit.log."""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+AUDIT_PATH = Path("/var/log/audit/audit.log")
+LOG_PATH = Path("/var/log/lab-endpoint/audit.log")
+CURSOR_PATH = Path("/var/lib/lab-endpoint/audit.cursor")
+PARSE_CAP = 262144
+RATE = 20
+ROTATE_BYTES = 8 * 1024 * 1024
+DIR_CAP = 80 * 1024 * 1024
+BATCH_N = 32
+BATCH_S = 1.0
+STRING_MAX = 16384
+O_CREAT = 0o100
+ARCH_X86_64 = "c000003e"
+
+SYSCALL_BY_NR = {
+    59: "execve",
+    82: "rename",
+    87: "unlink",
+    257: "openat",
+    263: "unlinkat",
+    264: "renameat",
+    316: "renameat2",
+    322: "execveat",
+}
+KEEP = frozenset(
+    {"execve", "openat", "unlink", "unlinkat", "rename", "renameat", "renameat2"}
+)
+KV_RE = re.compile(r'(\w+)=("(?:\\.|[^"\\])*"|[^\s]+)')
+MSG_RE = re.compile(r"msg=audit\((\d+)\.(\d+):(\d+)\)")
+
+
+def _truncate(message: str) -> str:
+    raw = message.encode("utf-8")
+    if len(raw) <= STRING_MAX:
+        return message
+    cut = raw[:STRING_MAX].decode("utf-8", errors="ignore")
+    return cut + "..."
+
+
+def _unquote(value: str) -> str:
+    if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
+        return bytes(value[1:-1], "utf-8").decode("unicode_escape")
+    return value
+
+
+def _syscall_name(value: str) -> str | None:
+    if value in KEEP or value == "execveat":
+        return value
+    try:
+        return SYSCALL_BY_NR.get(int(value, 10), value)
+    except ValueError:
+        return value
+
+
+def _parse_flags(value: str) -> int:
+    try:
+        return int(value, 16)
+    except ValueError:
+        return 0
+
+
+def parse_line(line: str) -> dict | None:
+    line = line.rstrip("\n")
+    if not line.startswith("type="):
+        return None
+    msg = MSG_RE.search(line)
+    if msg is None:
+        return None
+    seconds, frac, serial = msg.group(1), msg.group(2), msg.group(3)
+    fields = {"type": line[5:].split(None, 1)[0], "serial": serial}
+    frac = (frac + "000000")[:6]
+    ts = datetime.fromtimestamp(int(seconds), tz=timezone.utc).replace(
+        microsecond=int(frac)
+    )
+    fields["timestamp"] = ts.isoformat(timespec="microseconds")
+    for key, raw in KV_RE.findall(line):
+        if key in ("type", "msg"):
+            continue
+        fields[key] = _unquote(raw)
+    return fields
+
+
+def keep_event(records: list[dict]) -> dict | None:
+    syscall_rec = next((r for r in records if r.get("type") == "SYSCALL"), None)
+    if syscall_rec is None:
+        return None
+    arch = (syscall_rec.get("arch") or "").lower()
+    if arch not in (ARCH_X86_64, "x86_64"):
+        return None
+    success = syscall_rec.get("success", "")
+    if success not in ("yes", "1"):
+        return None
+    name = _syscall_name(str(syscall_rec.get("syscall", "")))
+    if name is None or name == "execveat" or name not in KEEP:
+        return None
+    if name == "openat":
+        if _parse_flags(str(syscall_rec.get("a2", "0"))) & O_CREAT == 0:
+            return None
+    out = {
+        "timestamp": syscall_rec["timestamp"],
+        "source": 'auditd',
+        "syscall": name,
+    }
+    exe = syscall_rec.get("exe")
+    if isinstance(exe, str) and exe:
+        out["exe"] = _truncate(exe)
+    pid = syscall_rec.get("pid")
+    if pid is not None and str(pid).isdigit():
+        out["pid"] = int(pid)
+    execve = next((r for r in records if r.get("type") == "EXECVE"), None)
+    if execve is not None:
+        try:
+            argc = int(execve.get("argc", "0"))
+        except ValueError:
+            argc = 0
+        parts = []
+        for i in range(argc):
+            arg = execve.get(f"a{i}")
+            if arg is None:
+                break
+            parts.append(arg)
+        if parts:
+            out["command_line"] = _truncate(" ".join(parts))
+    return out
+
+
+def records_from_text(text: str):
+    groups: dict[str, list[dict]] = {}
+    order: list[str] = []
+    for raw in text.splitlines(keepends=True):
+        if len(raw.encode("utf-8", errors="replace")) > PARSE_CAP:
+            continue
+        rec = parse_line(raw)
+        if rec is None:
+            continue
+        serial = rec["serial"]
+        if serial not in groups:
+            groups[serial] = []
+            order.append(serial)
+        groups[serial].append(rec)
+    for serial in order:
+        mapped = keep_event(groups[serial])
+        if mapped is not None:
+            yield mapped
+
+
+def format_audit_line(mapped: dict) -> str:
+    return json.dumps(mapped, ensure_ascii=False, separators=(",", ":")) + "\n"
+
+
+def _now_ts() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="microseconds")
+
+
+def _open_log():
+    if LOG_PATH.is_symlink() or not LOG_PATH.exists():
+        LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        LOG_PATH.touch()
+    fd = os.open(str(LOG_PATH), os.O_WRONLY | os.O_APPEND | os.O_NOFOLLOW)
+    return os.fdopen(fd, "ab", buffering=0)
+
+
+def _truncate_in_place(fh):
+    fh.flush()
+    os.fsync(fh.fileno())
+    fh.truncate(0)
+    fh.seek(0)
+    return fh
+
+
+def _dir_size() -> int:
+    total = 0
+    for p in LOG_PATH.parent.glob("*"):
+        if p.is_file():
+            total += p.stat().st_size
+    return total
+
+
+def _read_cursor() -> int:
+    if not CURSOR_PATH.exists():
+        return 0
+    try:
+        return int(CURSOR_PATH.read_text(encoding="utf-8").strip() or "0")
+    except ValueError:
+        return 0
+
+
+def _write_cursor(offset: int) -> None:
+    CURSOR_PATH.parent.mkdir(parents=True, exist_ok=True)
+    CURSOR_PATH.write_text(str(offset), encoding="utf-8")
+    cfd = os.open(str(CURSOR_PATH), os.O_RDONLY)
+    try:
+        os.fsync(cfd)
+    finally:
+        os.close(cfd)
+
+
+def main() -> int:
+    CURSOR_PATH.parent.mkdir(parents=True, exist_ok=True)
+    LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    fh = _open_log()
+    pending = 0
+    last_sync = time.monotonic()
+    window_start = time.monotonic()
+    window_n = 0
+    dropped = 0
+    last_notice = 0.0
+    leftover = ""
+    groups: dict[str, list[dict]] = {}
+    order: list[str] = []
+
+    def flush():
+        nonlocal pending, last_sync
+        fh.flush()
+        os.fsync(fh.fileno())
+        pending = 0
+        last_sync = time.monotonic()
+
+    def emit(mapped: dict) -> None:
+        nonlocal fh, pending, window_start, window_n, dropped, last_notice
+        now = time.monotonic()
+        if now - window_start >= 1.0:
+            window_start = now
+            window_n = 0
+        if window_n >= RATE:
+            dropped += 1
+            if now - last_notice >= 1.0:
+                notice = {
+                    "timestamp": _now_ts(),
+                    "source": 'auditd',
+                    "identifier": "lab-audit-forward",
+                    "message": f"dropped {dropped} lines (rate limit)",
+                }
+                fh.write(format_audit_line(notice).encode("utf-8"))
+                dropped = 0
+                last_notice = now
+                pending += 1
+            return
+        window_n += 1
+        if LOG_PATH.stat().st_size >= ROTATE_BYTES:
+            flush()
+            fh = _truncate_in_place(fh)
+        if _dir_size() >= DIR_CAP:
+            dropped += 1
+            return
+        fh.write(format_audit_line(mapped).encode("utf-8"))
+        pending += 1
+        if pending >= BATCH_N or (time.monotonic() - last_sync) >= BATCH_S:
+            flush()
+
+    def flush_serial(serial: str) -> None:
+        recs = groups.pop(serial, None)
+        if recs is None:
+            return
+        if serial in order:
+            order.remove(serial)
+        mapped = keep_event(recs)
+        if mapped is not None:
+            emit(mapped)
+
+    try:
+        while True:
+            if not AUDIT_PATH.exists() or AUDIT_PATH.is_symlink():
+                time.sleep(0.25)
+                continue
+            offset = _read_cursor()
+            size = AUDIT_PATH.stat().st_size
+            if size < offset:
+                offset = 0
+            afd = os.open(str(AUDIT_PATH), os.O_RDONLY | os.O_NOFOLLOW)
+            try:
+                os.lseek(afd, offset, os.SEEK_SET)
+                chunk = os.read(afd, 65536)
+                new_offset = os.lseek(afd, 0, os.SEEK_CUR)
+            finally:
+                os.close(afd)
+            if not chunk:
+                time.sleep(0.2)
+                continue
+            leftover += chunk.decode("utf-8", errors="replace")
+            while "\n" in leftover:
+                raw, leftover = leftover.split("\n", 1)
+                raw += "\n"
+                if len(raw.encode("utf-8", errors="replace")) > PARSE_CAP:
+                    continue
+                rec = parse_line(raw)
+                if rec is None:
+                    continue
+                serial = rec["serial"]
+                if rec.get("type") == "SYSCALL" and serial in groups:
+                    flush_serial(serial)
+                if rec.get("type") == "EOE":
+                    if serial not in groups:
+                        continue
+                    groups[serial].append(rec)
+                    flush_serial(serial)
+                    continue
+                if serial not in groups:
+                    groups[serial] = []
+                    order.append(serial)
+                groups[serial].append(rec)
+            _write_cursor(new_offset)
+            while len(order) > 8:
+                flush_serial(order[0])
+    except KeyboardInterrupt:
+        pass
+    finally:
+        for serial in list(order):
+            flush_serial(serial)
+        try:
+            flush()
+        except Exception:
+            pass
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
