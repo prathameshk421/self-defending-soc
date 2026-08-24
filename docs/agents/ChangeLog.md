@@ -25,3 +25,4 @@ Append-only. One dated bullet when behavior, schema, inventory, or public APIs c
 - Endpoint locators pinned to `/var/log/lab-endpoint/{syslog,udev,process}.log`. 9p writers truncate in place at 8 MiB (same inode); directory cap 80 MiB.
 - USB helper is copy-only (`file_create`); it does not exec the marker.
 - `run-vm.sh` always deletes then recreates the overlay. `soc.raw.v1` `retention.bytes=1GiB`. Ingest commits every raw partition after a successful flush.
+- Vector tails `lab-endpoint` `audit.log` (`source_alias` still `lab-endpoint`). Guest `lab-audit-forward` keep-filters allowlisted SYSCALL records onto that file; in-guest auditd is installed from hashed bookworm `.deb`s (guest never `apt`).
