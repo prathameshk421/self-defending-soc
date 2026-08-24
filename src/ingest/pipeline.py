@@ -99,7 +99,7 @@ class Pipeline:
         if batch:
             failures = self._producer.flush()
             if not failures:
-                self._consumer.commit(batch[-1])
+                self._consumer.commit(batch)
                 committed = True
 
         return BatchResult(

@@ -108,14 +108,14 @@ def test_empty_poll_commits_nothing(resolver):
     assert producer.flush_calls == 0
 
 
-def test_batch_commits_only_last_offset(resolver):
-    messages = [
-        make_raw_message(make_raw_record(), offset=0),
-        make_raw_message(make_raw_record(source_alias="lab-idp"), offset=1),
-    ]
-    pipeline, consumer, producer = _pipeline(messages, resolver)
+def test_batch_commits_all_partitions(resolver):
+    m0 = make_raw_message(make_raw_record(), offset=4, partition=0)
+    m1 = make_raw_message(
+        make_raw_record(source_alias="lab-idp"), offset=9, partition=1
+    )
+    pipeline, consumer, producer = _pipeline([m0, m1], resolver)
 
     result = pipeline.run_once()
 
-    assert result.events == 2
-    assert consumer.committed == [messages[-1]]
+    assert result.events == 2 and result.committed
+    assert consumer.committed == [m0, m1]

@@ -60,8 +60,8 @@ class FakeConsumer:
             return self._messages.pop(0)
         return None
 
-    def commit(self, message: RawMessage) -> None:
-        self.committed.append(message)
+    def commit(self, messages: list[RawMessage]) -> None:
+        self.committed.extend(messages)
 
 
 def make_raw_record(
@@ -80,10 +80,12 @@ def make_raw_record(
     )
 
 
-def make_raw_message(record: RawRecord, offset: int = 0) -> RawMessage:
+def make_raw_message(
+    record: RawRecord, offset: int = 0, partition: int = 0
+) -> RawMessage:
     return RawMessage(
         topic=TOPIC_RAW,
-        partition=0,
+        partition=partition,
         offset=offset,
         key=record.source_alias,
         value=record.model_dump_json().encode("utf-8"),
