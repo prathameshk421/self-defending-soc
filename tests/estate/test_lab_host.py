@@ -21,12 +21,14 @@ def test_default_inventory_lab_host():
         "endpoint-syslog",
         "endpoint-udev",
         "endpoint-process",
+        "endpoint-audit",
     }
     locators = {s.id: s.locator for s in host.log_sources}
     assert locators == {
         "endpoint-syslog": "/var/log/lab-endpoint/syslog.log",
         "endpoint-udev": "/var/log/lab-endpoint/udev.log",
         "endpoint-process": "/var/log/lab-endpoint/process.log",
+        "endpoint-audit": "/var/log/lab-endpoint/audit.log",
     }
     assert host.aliases == ["lab-endpoint"]
     with pytest.raises(RespondForbidden):
