@@ -1,0 +1,15 @@
+[Unit]
+Description=lab-endpoint net forwarder (exclusive net.log writer)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+ExecStart=/usr/local/sbin/lab-net-wrap
+Restart=on-failure
+RestartSec=2
+StartLimitBurst=10
+StartLimitIntervalSec=60
+
+[Install]
+WantedBy=multi-user.target

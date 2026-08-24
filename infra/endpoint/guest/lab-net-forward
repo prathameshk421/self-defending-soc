@@ -1,0 +1,284 @@
+#!/usr/bin/python3
+"""Exclusive writer of net.log: nft trace keep-filter + DNS stub pipe."""
+
+from __future__ import annotations
+
+import json
+import os
+import selectors
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+LOG_PATH = Path("/var/log/lab-endpoint/net.log")
+STUB_PATH = Path("/usr/local/sbin/lab-dns-stub")
+SKIP_DADDR = frozenset({"10.0.2.2", "10.0.2.3"})
+PARSE_CAP = 262144
+RATE = 20
+ROTATE_BYTES = 8 * 1024 * 1024
+DIR_CAP = 80 * 1024 * 1024
+BATCH_N = 32
+BATCH_S = 1.0
+STRING_MAX = 16384
+PROTO = {6: "tcp", 17: "udp", 1: "icmp"}
+
+
+def _now_ts() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="microseconds")
+
+
+def _truncate(message: str) -> str:
+    raw = message.encode("utf-8")
+    if len(raw) <= STRING_MAX:
+        return message
+    cut = raw[:STRING_MAX].decode("utf-8", errors="ignore")
+    return cut + "..."
+
+
+def format_net_line(mapped: dict) -> str:
+    return json.dumps(mapped, ensure_ascii=False, separators=(",", ":")) + "\n"
+
+
+def dns_record(qname: str, qtype: str) -> dict:
+    return {
+        "timestamp": _now_ts(),
+        "source": 'dns',
+        "qname": _truncate(qname),
+        "qtype": _truncate(str(qtype)),
+    }
+
+
+def _traces(obj):
+    if isinstance(obj, dict):
+        if "trace" in obj and isinstance(obj["trace"], dict):
+            yield obj["trace"]
+        for value in obj.values():
+            yield from _traces(value)
+    elif isinstance(obj, list):
+        for item in obj:
+            yield from _traces(item)
+
+
+def _keep_trace(trace: dict, seen: set) -> dict | None:
+    ip = trace.get("ip") if isinstance(trace.get("ip"), dict) else {}
+    daddr = ip.get("daddr") or trace.get("daddr")
+    if not isinstance(daddr, str) or daddr in SKIP_DADDR:
+        return None
+    proto_n = ip.get("protocol")
+    tcp = trace.get("tcp") if isinstance(trace.get("tcp"), dict) else {}
+    udp = trace.get("udp") if isinstance(trace.get("udp"), dict) else {}
+    if tcp:
+        proto = "tcp"
+        dport = tcp.get("dport")
+        sport = tcp.get("sport")
+    elif udp:
+        proto = "udp"
+        dport = udp.get("dport")
+        sport = udp.get("sport")
+    else:
+        proto = PROTO.get(proto_n, "ip")
+        dport = None
+        sport = None
+    saddr = ip.get("saddr")
+    key = (proto, saddr, sport, daddr, dport)
+    ct = trace.get("ct") if isinstance(trace.get("ct"), dict) else {}
+    state = str(ct.get("state") or "").lower()
+    if key in seen:
+        return None
+    if state and state not in ("new", "syn-sent", "none", ""):
+        return None
+    seen.add(key)
+    out = {
+        "timestamp": _now_ts(),
+        "source": 'nft',
+        "event": "new",
+        "proto": proto,
+        "daddr": _truncate(daddr),
+    }
+    if isinstance(dport, int) or (isinstance(dport, str) and str(dport).isdigit()):
+        out["dport"] = int(dport)
+    if isinstance(saddr, str) and saddr:
+        out["saddr"] = _truncate(saddr)
+    return out
+
+
+def _iter_json(text: str):
+    decoder = json.JSONDecoder()
+    idx = 0
+    length = len(text)
+    while idx < length:
+        while idx < length and text[idx].isspace():
+            idx += 1
+        if idx >= length:
+            break
+        try:
+            obj, end = decoder.raw_decode(text, idx)
+        except json.JSONDecodeError:
+            break
+        yield obj
+        idx = end
+
+
+def records_from_nft_text(text: str, seen: set | None = None):
+    seen = seen if seen is not None else set()
+    for raw in text.splitlines(keepends=True) or [text]:
+        if len(raw.encode("utf-8", errors="replace")) > PARSE_CAP:
+            continue
+        chunk = raw.strip()
+        if not chunk:
+            continue
+        for obj in _iter_json(chunk):
+            for trace in _traces(obj):
+                mapped = _keep_trace(trace, seen)
+                if mapped is not None:
+                    yield mapped
+
+
+def _open_log():
+    if LOG_PATH.is_symlink() or not LOG_PATH.exists():
+        LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        LOG_PATH.touch()
+    fd = os.open(str(LOG_PATH), os.O_WRONLY | os.O_APPEND | os.O_NOFOLLOW)
+    return os.fdopen(fd, "ab", buffering=0)
+
+
+def _truncate_in_place(fh):
+    fh.flush()
+    os.fsync(fh.fileno())
+    fh.truncate(0)
+    fh.seek(0)
+    return fh
+
+
+def _dir_size() -> int:
+    total = 0
+    for p in LOG_PATH.parent.glob("*"):
+        if p.is_file():
+            total += p.stat().st_size
+    return total
+
+
+def main() -> int:
+    LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    fh = _open_log()
+    pending = 0
+    last_sync = time.monotonic()
+    window_start = time.monotonic()
+    window_n = 0
+    dropped = 0
+    last_notice = 0.0
+    seen: set = set()
+    nft_buf = ""
+    dns_buf = ""
+
+    def flush():
+        nonlocal pending, last_sync
+        fh.flush()
+        os.fsync(fh.fileno())
+        pending = 0
+        last_sync = time.monotonic()
+
+    def emit(mapped: dict) -> None:
+        nonlocal fh, pending, window_start, window_n, dropped, last_notice
+        now = time.monotonic()
+        if now - window_start >= 1.0:
+            window_start = now
+            window_n = 0
+        if window_n >= RATE:
+            dropped += 1
+            if now - last_notice >= 1.0:
+                notice = {
+                    "timestamp": _now_ts(),
+                    "source": 'nft',
+                    "identifier": "lab-net-forward",
+                    "message": f"dropped {dropped} lines (rate limit)",
+                }
+                fh.write(format_net_line(notice).encode("utf-8"))
+                dropped = 0
+                last_notice = now
+                pending += 1
+            return
+        window_n += 1
+        if LOG_PATH.stat().st_size >= ROTATE_BYTES:
+            flush()
+            fh = _truncate_in_place(fh)
+        if _dir_size() >= DIR_CAP:
+            dropped += 1
+            return
+        fh.write(format_net_line(mapped).encode("utf-8"))
+        pending += 1
+        if pending >= BATCH_N or (time.monotonic() - last_sync) >= BATCH_S:
+            flush()
+
+    nft = subprocess.Popen(
+        ["nft", "-j", "monitor", "trace"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        bufsize=1,
+    )
+    stub = subprocess.Popen(
+        ["/usr/bin/python3", str(STUB_PATH)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        bufsize=1,
+    )
+    sel = selectors.DefaultSelector()
+    assert nft.stdout is not None and stub.stdout is not None
+    sel.register(nft.stdout, selectors.EVENT_READ, "nft")
+    sel.register(stub.stdout, selectors.EVENT_READ, "dns")
+    try:
+        while True:
+            for key, _ in sel.select(timeout=0.5):
+                line = key.fileobj.readline()
+                if not line:
+                    continue
+                if key.data == "nft":
+                    nft_buf += line
+                    if len(nft_buf.encode("utf-8", errors="replace")) > PARSE_CAP:
+                        nft_buf = ""
+                        continue
+                    try:
+                        json.loads(nft_buf)
+                    except json.JSONDecodeError:
+                        continue
+                    for mapped in records_from_nft_text(nft_buf, seen):
+                        emit(mapped)
+                    nft_buf = ""
+                else:
+                    dns_buf += line
+                    if "\n" not in dns_buf:
+                        continue
+                    raw, dns_buf = dns_buf.split("\n", 1)
+                    raw = raw.strip()
+                    if not raw:
+                        continue
+                    try:
+                        obj = json.loads(raw)
+                    except json.JSONDecodeError:
+                        continue
+                    if not isinstance(obj, dict):
+                        continue
+                    qname = obj.get("qname") or obj.get("q")
+                    qtype = obj.get("qtype") or obj.get("t") or "A"
+                    if isinstance(qname, str):
+                        emit(dns_record(qname, str(qtype)))
+            if pending and (time.monotonic() - last_sync) >= BATCH_S:
+                flush()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        try:
+            flush()
+        except Exception:
+            pass
+        nft.kill()
+        stub.kill()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

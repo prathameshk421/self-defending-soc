@@ -1,0 +1,4 @@
+#!/bin/sh
+# Socketpair-style wrap: only lab-net-forward opens net.log.
+# Stub stdout is a pipe into the forwarder; StandardOutput=file is forbidden.
+exec /usr/bin/python3 /usr/local/sbin/lab-net-forward
