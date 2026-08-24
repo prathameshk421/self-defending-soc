@@ -47,7 +47,7 @@ Lab logs / webhooks / red-team findings
    Kafka topic soc.raw.v1
         │
         ▼
-   ingest pipeline  (python -m ingest run)
+   ingest pipeline  (compose service soc-agent-ingest)
         │  decode, validate, redact, resolve alias via Estate
         │
         ├── known asset     →  soc.events.v1            (Detect reads this)
@@ -126,7 +126,7 @@ That JSON is a **RawRecord** (defined in `src/ingest/models.py`). It is an *enve
 5. For each message, call `normalize(...)`.
 6. Produce the result to the matching topic.
 7. **Flush** (wait until Kafka confirms every produce).
-8. Only then **commit the consumer offset**. If any produce failed, commit nothing and try the batch again.
+8. Only then **commit every partition in the batch** (max offset+1 per `(topic, partition)`). If any produce failed, commit nothing and try the batch again.
 
 ### 4. Normalize decides the fate
 
@@ -182,8 +182,8 @@ Config: `infra/vector/vector.yaml`. Runs as the `vector` service in `infra/compo
 |---|---|
 | **Source** | Where data comes from (a file tail, or an HTTP listener) |
 | **Transform (remap)** | A small script that *rebuilds* the record as a RawRecord. Written in VRL (Vector Remap Language) |
-| **Sink** | Where data goes (here: Kafka topic `soc.raw.v1`) |
-| **Disk buffer** | If Kafka is briefly down, Vector writes to disk and blocks when full instead of dropping lines |
+| **Sink** | Where data goes. Two Kafka sinks share topic `soc.raw.v1`: `kafka_raw_app` (shop/idp/wallet/api/webhooks/redteam) and `kafka_raw_endpoint` (lab-endpoint remaps) |
+| **Disk buffer** | App sink: 256 MiB, `when_full: block`. Endpoint sink: 256 MiB, `when_full: drop_newest` so host floods cannot stall app tails |
 | **Checkpoint** | Vector remembers how far it has read each file so a restart does not re-tail from the beginning |
 
 Current sources:
@@ -202,6 +202,8 @@ Current sources:
 
 Host endpoint payloads are guest-authored self-report (untrusted). IdP `auth.log` is application identity; `lab-endpoint` `syslog.log` with `identifier=sshd` or `sudo` is host OS auth. Never add a host `auth.log` tail.
 
+App remaps feed `kafka_raw_app` (`when_full: block`). Endpoint remaps feed `kafka_raw_endpoint` (`when_full: drop_newest`). There is no `sinks.kafka_raw`.
+
 ### Kafka — the bus
 
 **Apache Kafka** is a distributed log. Producers append messages to named **topics**. Consumers read those topics, independently, at their own pace. Messages stay on the broker for a configured **retention** period, then expire. That is why we can replay: the events are still sitting there.
@@ -214,7 +216,7 @@ A topic is a named stream. Ours:
 
 | Topic | Key | Partitions | Kept for | Who writes | Who reads |
 |---|---|---|---|---|---|
-| `soc.raw.v1` | `source_alias` | 3 | 48 hours | Vector only | Ingest only |
+| `soc.raw.v1` | `source_alias` | 3 | 48 hours and 1 GiB | Vector only | Ingest only |
 | `soc.events.v1` | `asset_id` | 3 | 7 days | Ingest only | Future Detect |
 | `soc.ingest.unmapped.v1` | `source_alias` | 1 | 72 hours | Ingest | Humans / later reprocess |
 | `soc.ingest.dlq.v1` | `source_alias` | 1 | 72 hours | Ingest | Humans / later reprocess |
@@ -413,7 +415,7 @@ poll up to 100 raw messages
 for each: normalize + produce (events or unmapped or dlq)
 flush()
 if every produce was acknowledged:
-    commit the last message’s offset
+    commit the whole batch (max offset+1 per topic+partition)
 else:
     commit nothing   → Kafka will redeliver the batch
 ```
@@ -472,12 +474,11 @@ Placeholders: `infra/.env.example`. Copy to `infra/.env`; never commit real pass
 
 ```
 python -m ingest check           # config + inventory + registry; exit 1 on failure
-python -m ingest run             # start the forever loop (needs [kafka] extra)
-python -m ingest emit --source-alias lab-shop --raw "test line"
+python -m ingest run             # forever loop; compose runs this as soc-agent-ingest
 python -m ingest schema export   # regenerate src/ingest/schemas/*.json
 ```
 
-`check` is the “will this even start?” command. `emit` is a one-off producer for bringing up the pipe without waiting for a real log line.
+`check` is the “will this even start?” command (also the compose healthcheck). Operator smoke does **not** use `ingest emit` and does not publish Kafka ports.
 
 ---
 
@@ -619,11 +620,18 @@ Jump list. Everyday language first, then the precise meaning in this repo.
 
 ## If you want to see it move
 
-1. Copy `infra/.env.example` to `infra/.env` and change the placeholders.
-2. From `infra/`: `docker compose up -d` (Kafka, Karapace, Vector).
-3. Install the package with Kafka: `pip install -e '.[kafka]'`.
-4. `INGEST_*` as in `.env.example`, then `python -m ingest check`.
-5. `python -m ingest emit --source-alias lab-shop --raw "hello from emit"`.
-6. `python -m ingest run` in another terminal — that record should land on `soc.events.v1` because `lab-shop` is in the inventory.
+Operator path: compose ingest on `lab-net`, append one Slice B syslog golden onto the host bind, consume `soc.events.v1` as `User:admin` from the same Kafka image. Success is Event JSON with `asset_id` `11111111-1111-4111-8111-111111111107`. Do not use `ingest emit`. Do not publish 9092/8081.
 
-You do not need Detect running. Ingest’s success condition is: raw in, redacted Event (or unmapped / DLQ) out, offsets committed only after Kafka says the write landed.
+```sh
+cd infra
+docker compose up -d --build
+# wait until soc-agent-ingest healthy
+printf '%s\n' '{"timestamp":"2023-07-22T04:26:40.000000+00:00","source":"journal","priority":6,"identifier":"sshd","message":"operator smoke"}' >> ../infra/endpoint/logs/syslog.log
+docker compose run --rm --no-deps \
+  -e KAFKA_ADMIN_PASSWORD \
+  kafka \
+  bash -lc 'printf "security.protocol=SASL_PLAINTEXT\nsasl.mechanism=PLAIN\nsasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username=\"admin\" password=\"%s\";\n" "$KAFKA_ADMIN_PASSWORD" > /tmp/admin.properties
+  /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server kafka:9092 --command-config /tmp/admin.properties --topic soc.events.v1 --from-beginning --timeout-ms 15000 --group operator-verify-$$'
+```
+
+Not a pytest gate. You do not need Detect running. Ingest’s success condition is: raw in, redacted Event (or unmapped / DLQ) out, offsets committed only after Kafka says the write landed.
