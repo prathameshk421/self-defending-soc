@@ -38,7 +38,7 @@ CLI (python -m estate)
 
 ```
 Vector (file tails + authed HTTP listeners; source_alias set per source)
-  including lab-endpoint syslog.log, udev.log, process.log, audit.log
+  including lab-endpoint syslog.log, udev.log, process.log, audit.log, net.log
   → kafka_raw_app / kafka_raw_endpoint → Kafka soc.raw.v1  (key = source_alias)
 
 compose service soc-agent-ingest (`python -m ingest run` on lab-net; no host ports)

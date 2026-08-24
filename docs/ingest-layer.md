@@ -200,8 +200,11 @@ Current sources:
 | `file_lab_endpoint_udev` | file tail | `lab-endpoint` |
 | `file_lab_endpoint_process` | file tail | `lab-endpoint` |
 | `file_lab_endpoint_audit` | file tail | `lab-endpoint` |
+| `file_lab_endpoint_net` | file tail | `lab-endpoint` |
 
-Host endpoint payloads are guest-authored self-report (untrusted). IdP `auth.log` is application identity; `lab-endpoint` `syslog.log` with `identifier=sshd` or `sudo` is host OS auth; payload `source=auditd` is a channel tag, not kernel proof. An IdP login, a host sshd syslog line, and an audit `execve` are different signals. Never add a host `auth.log` tail.
+Host endpoint payloads are guest-authored self-report (untrusted). IdP `auth.log` is application identity; `lab-endpoint` `syslog.log` with `identifier=sshd` or `sudo` is host OS auth; payload `source=auditd` is a channel tag, not kernel proof. An IdP login, a host sshd syslog line, and an audit `execve` are different signals. Payload `source=nft` / `source=dns` is likewise untrusted. Never add a host `auth.log` tail.
+
+QEMU Phase 2 NIC is `-nic user,model=virtio,restrict=on`: guest TCP/UDP to the operator host and the internet is blocked. SLIRP still exists inside the operator QEMU process. Guest DNS is the in-guest stub on `127.0.0.1:53` (REFUSED, no recurse), not the operator resolver. No pcap. Guest is not on docker `lab-net`.
 
 App remaps feed `kafka_raw_app` (`when_full: block`). Endpoint remaps feed `kafka_raw_endpoint` (`when_full: drop_newest`). There is no `sinks.kafka_raw`.
 

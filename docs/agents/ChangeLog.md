@@ -26,3 +26,4 @@ Append-only. One dated bullet when behavior, schema, inventory, or public APIs c
 - USB helper is copy-only (`file_create`); it does not exec the marker.
 - `run-vm.sh` always deletes then recreates the overlay. `soc.raw.v1` `retention.bytes=1GiB`. Ingest commits every raw partition after a successful flush.
 - Vector tails `lab-endpoint` `audit.log` (`source_alias` still `lab-endpoint`). Guest `lab-audit-forward` keep-filters allowlisted SYSCALL records onto that file; in-guest auditd is installed from hashed bookworm `.deb`s (guest never `apt`).
+- Vector tails `lab-endpoint` `net.log`. Exclusive guest writer `lab-net-forward` (nft trace keep-filter + DNS stub pipe). QEMU NIC is `user,model=virtio,restrict=on`. sshd and systemd-resolved disabled. No pcap. Payload `source` `nft`|`dns` is untrusted.
