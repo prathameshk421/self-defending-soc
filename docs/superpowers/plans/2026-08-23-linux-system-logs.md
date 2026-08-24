@@ -5,6 +5,8 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
 > **Supersedes:** [`2026-08-23-linux-endpoint-telemetry.md`](2026-08-23-linux-endpoint-telemetry.md). Task 0 banners that file. Do not implement it.
+>
+> **Slices C and D:** no longer “Later.” Implementation plan: [`2026-08-24-linux-audit-net-and-compose-ingest.md`](2026-08-24-linux-audit-net-and-compose-ingest.md). Do not implement C/D from this file.
 
 **Goal:** Catalog one Linux lab host (`lab-endpoint`) and feed the existing ingest pipe three guest-authored JSON line files: allowlisted journal remap (`syslog.log`), USB device lines (`udev.log`), USB helper file/exec lines (`process.log`). CI proves mapping with goldens. QEMU + virtual USB is operator-only.
 
@@ -43,8 +45,8 @@ Application HTTP logs are **not** network telemetry.
 |---|---|---|---|
 | A | Application logs | shop access, idp auth, wallet app, soc-api access, two webhooks | Done |
 | B | **This plan** | Allowlisted journal remap + USB helper device/file/exec | This file |
-| C | Host process/file audit | OS-wide exec/file (auditd or equivalent) | Later |
-| D | Network telemetry | Firewall/flow/DNS/pcap; any guest NIC | Later |
+| C | Host process/file audit | OS-wide exec/file (auditd or equivalent) | [`2026-08-24-linux-audit-net-and-compose-ingest.md`](2026-08-24-linux-audit-net-and-compose-ingest.md) Phase 1 |
+| D | Network telemetry | Firewall/DNS JSON; user-mode NIC `restrict=on`; no pcap | [`2026-08-24-linux-audit-net-and-compose-ingest.md`](2026-08-24-linux-audit-net-and-compose-ingest.md) Phase 2 |
 | E | Detect / Respond / Red team on the host | Rules, isolation, in-scope USB attacks | Later |
 
 USB is a **story inside B**, not a second asset.

@@ -20,3 +20,8 @@ Append-only. One dated bullet when behavior, schema, inventory, or public APIs c
 - Vector tails `lab-endpoint` `syslog.log`, `udev.log`, and `process.log` with hardcoded alias `lab-endpoint`. Compose inode-pins those three files into Vector (not a directory bind).
 - Guest journal remap lives in `infra/endpoint/guest/journal_map.py` (tests load it via SourceFileLoader; ingest/estate do not import it).
 - Optional operator QEMU guest under `infra/endpoint/` (no compose QEMU service): 9p of the log dir only, `-nic none`, unix monitor, USB helper + journal forwarder.
+- Compose `soc-agent-ingest` runs the normalizer on `lab-net` (no host ports). Kafka unpublished. Operator smoke is syslog append + admin consume of `soc.events.v1`, not `ingest emit`.
+- Vector Kafka sinks split: `kafka_raw_app` (`when_full: block`) vs `kafka_raw_endpoint` (`when_full: drop_newest`).
+- Endpoint locators pinned to `/var/log/lab-endpoint/{syslog,udev,process}.log`. 9p writers truncate in place at 8 MiB (same inode); directory cap 80 MiB.
+- USB helper is copy-only (`file_create`); it does not exec the marker.
+- `run-vm.sh` always deletes then recreates the overlay. `soc.raw.v1` `retention.bytes=1GiB`. Ingest commits every raw partition after a successful flush.

@@ -39,9 +39,9 @@ CLI (python -m estate)
 ```
 Vector (file tails + authed HTTP listeners; source_alias set per source)
   including lab-endpoint syslog.log, udev.log, process.log
-  → Kafka soc.raw.v1  (key = source_alias)
+  → kafka_raw_app / kafka_raw_endpoint → Kafka soc.raw.v1  (key = source_alias)
 
-CLI (python -m ingest run)
+compose service soc-agent-ingest (`python -m ingest run` on lab-net; no host ports)
   → ingest.cli.main
   → ingest.config.load_config (fail closed)
   → estate.loader.load_inventory → estate.query.Estate  (alias resolver)
@@ -56,7 +56,7 @@ CLI (python -m ingest run)
             → Event (deterministic event_id)
        → produce: Normalized→soc.events.v1 (key=asset_id)
                   Unmapped→soc.ingest.unmapped.v1, Invalid→soc.ingest.dlq.v1
-       → flush; commit offsets only if all deliveries confirmed
+       → flush; commit every partition in the batch only if all deliveries confirmed
 ```
 
 ### Failure points

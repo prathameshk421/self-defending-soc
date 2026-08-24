@@ -92,4 +92,40 @@ So later OS-wide `file_create` (slice C) is not confused with USB helper confess
 
 ### No auditd/Sysmon. `process.log` is helper-authored copy/exec confession
 
+Superseded for the **guest only** by in-guest auditd in [`2026-08-24-linux-audit-net-and-compose-ingest.md`](../superpowers/plans/2026-08-24-linux-audit-net-and-compose-ingest.md) Phase 1. Vector still has no auditd/journald source.
+
 ### This plan supersedes the USB-only endpoint plan
+
+## 2026-08-24 — Compose ingest + endpoint writers (Phase 0)
+
+### Compose `soc-agent-ingest` is the operator consumer; Kafka unpublished
+
+The normalizer runs on `lab-net`. No Kafka/Karapace/Vector/ingest `ports:`. Operator smoke is syslog append + admin consume, not host `pip install` + `ingest emit`.
+
+### Two Vector sinks (app block / endpoint drop_newest)
+
+Endpoint floods must not stall shop/idp/wallet/api tails. Same topic `soc.raw.v1`, `key_field: source_alias`.
+
+### Truncate-in-place at 8 MiB; dir cap 80 MiB
+
+Rename-rotate would break Vector inode-pin on 9p. Same inode (`ftruncate` / `: >file`). No `.log.1` on 9p.
+
+### USB helper copy-only; no exec
+
+Copies the marker and writes `file_create` only. Slice B `process.jsonl` goldens stay fixtures.
+
+### `run-vm.sh` always deletes overlay
+
+Journal cursor on qcow is lost every boot. No instance-id bump.
+
+### Commit all raw partitions after flush
+
+`commit(batch[-1])` dropped other partitions in a mixed batch. Adapter commits max(offset)+1 per `(topic, partition)`.
+
+### `soc.raw.v1` `retention.bytes=1GiB`
+
+Time retention (48h) stays. Byte cap so an endpoint flood cannot fill the broker disk.
+
+### In-guest auditd (Phase 1) supersedes “No auditd” for the guest only
+
+Vector still file-tails. Envelope `source_alias` stays `lab-endpoint`.

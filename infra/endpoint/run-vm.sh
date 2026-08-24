@@ -24,8 +24,9 @@ SHARE="$LOGS"
 
 mkdir -p "$RUN" "$LOGS"
 chmod 0700 "$RUN"
-touch "$LOGS/syslog.log" "$LOGS/udev.log" "$LOGS/process.log"
-if [ -L "$LOGS/syslog.log" ] || [ -L "$LOGS/udev.log" ] || [ -L "$LOGS/process.log" ]; then
+touch "$LOGS/syslog.log" "$LOGS/udev.log" "$LOGS/process.log" "$LOGS/audit.log" "$LOGS/net.log"
+if [ -L "$LOGS/syslog.log" ] || [ -L "$LOGS/udev.log" ] || [ -L "$LOGS/process.log" ] \
+  || [ -L "$LOGS/audit.log" ] || [ -L "$LOGS/net.log" ]; then
   echo "log paths must be regular files" >&2
   exit 1
 fi
@@ -42,9 +43,8 @@ if [ ! -f "$CACHE" ]; then
   mv "$CACHE.partial" "$CACHE"
 fi
 
-if [ ! -f "$OVERLAY" ]; then
-  qemu-img create -f qcow2 -F qcow2 -b "$CACHE" "$OVERLAY" 8G
-fi
+rm -f "$OVERLAY"
+qemu-img create -f qcow2 -F qcow2 -b "$CACHE" "$OVERLAY" 8G
 
 # Build nocloud ISO with guest files beside user-data.
 CIDIR="$(mktemp -d)"

@@ -182,7 +182,7 @@ transforms:
       }
 
 sinks:
-  kafka_raw:
+  kafka_raw_app:
     type: kafka
     inputs:
       - wrap_lab_shop
@@ -191,6 +191,23 @@ sinks:
       - wrap_soc_api
       - wrap_webhooks
       - wrap_redteam
+    bootstrap_servers: kafka:9092
+    topic: soc.raw.v1
+    key_field: source_alias
+    encoding:
+      codec: json
+    sasl:
+      enabled: true
+      mechanism: PLAIN
+      username: vector
+      password: "${KAFKA_VECTOR_PASSWORD}"
+    buffer:
+      type: disk
+      max_size: 268435456
+      when_full: block
+  kafka_raw_endpoint:
+    type: kafka
+    inputs:
       - wrap_lab_endpoint_syslog
       - wrap_lab_endpoint_udev
       - wrap_lab_endpoint_process
@@ -207,4 +224,4 @@ sinks:
     buffer:
       type: disk
       max_size: 268435456
-      when_full: block
+      when_full: drop_newest

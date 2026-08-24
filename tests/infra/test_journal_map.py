@@ -43,6 +43,35 @@ def test_run_vm_exports_logs_dir_only():
     assert "latest" not in text.split("IMAGE_URL", 1)[-1].split("\n", 1)[0]
 
 
+def test_run_vm_recreates_overlay_and_stays_nic_none():
+    text = (REPO_ROOT / "infra/endpoint/run-vm.sh").read_text(encoding="utf-8")
+    assert "rm -f" in text and "overlay.qcow2" in text
+    assert "-nic none" in text
+    assert "hostfwd" not in text
+    for name in ("syslog.log", "udev.log", "process.log", "audit.log", "net.log"):
+        assert name in text
+
+
+def test_journal_forwarder_truncates_in_place():
+    text = (REPO_ROOT / "infra/endpoint/guest/lab-journal-forward").read_text(
+        encoding="utf-8"
+    )
+    assert "DIR_CAP = 80 * 1024 * 1024" in text
+    assert "truncate" in text or "ftruncate" in text
+    assert ".rename(" not in text
+    assert 'with_name(LOG_PATH.name + ".1")' not in text
+
+
+def test_usb_helper_does_not_exec_marker():
+    text = (REPO_ROOT / "infra/endpoint/guest/lab-usb-ingest").read_text(
+        encoding="utf-8"
+    )
+    assert "exec /tmp/lab-usb-marker" not in text
+    assert "process_create" not in text
+    assert "file_create" in text
+    assert "mv " not in text.split("rotate_if_needed", 1)[-1][:400]
+
+
 @pytest.fixture(scope="module")
 def jm():
     return _load_mapper()
