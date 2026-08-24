@@ -22,6 +22,7 @@ NEW_REMAPS = [
     ("file_lab_endpoint_udev", "wrap_lab_endpoint_udev", "/var/log/lab/lab-endpoint/udev.log"),
     ("file_lab_endpoint_process", "wrap_lab_endpoint_process", "/var/log/lab/lab-endpoint/process.log"),
     ("file_lab_endpoint_audit", "wrap_lab_endpoint_audit", "/var/log/lab/lab-endpoint/audit.log"),
+    ("file_lab_endpoint_net", "wrap_lab_endpoint_net", "/var/log/lab/lab-endpoint/net.log"),
 ]
 
 
