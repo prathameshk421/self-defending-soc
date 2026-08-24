@@ -104,12 +104,17 @@ class KafkaConsumerAdapter:
             value=message.value() or b"",
         )
 
-    def commit(self, message: RawMessage) -> None:
+    def commit(self, messages: list[RawMessage]) -> None:
+        latest: dict[tuple[str, int], int] = {}
+        for message in messages:
+            key = (message.topic, message.partition)
+            prev = latest.get(key)
+            if prev is None or message.offset > prev:
+                latest[key] = message.offset
         self._consumer.commit(
             offsets=[
-                confluent_kafka.TopicPartition(
-                    message.topic, message.partition, message.offset + 1
-                )
+                confluent_kafka.TopicPartition(topic, partition, offset + 1)
+                for (topic, partition), offset in sorted(latest.items())
             ],
             asynchronous=False,
         )

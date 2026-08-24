@@ -52,8 +52,8 @@ class Producer(Protocol):
 class Consumer(Protocol):
     def poll(self, timeout: float = 1.0) -> Optional[RawMessage]: ...
 
-    def commit(self, message: RawMessage) -> None:
-        """Commit offsets up to and including this message."""
+    def commit(self, messages: list[RawMessage]) -> None:
+        """Commit max(offset)+1 for each distinct (topic, partition)."""
         ...
 
 
